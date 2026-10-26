@@ -1,0 +1,24 @@
+<?php
+
+use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\DeviceController;
+use Illuminate\Support\Facades\Route;
+
+Route::redirect('/', '/devices');
+
+Route::get('/devices', [DeviceController::class, 'index'])->name('devices.index');
+Route::post('/devices', [DeviceController::class, 'store'])->name('devices.store');
+Route::put('/devices/{device}', [DeviceController::class, 'update'])->name('devices.update');
+Route::delete('/devices/{device}', [DeviceController::class, 'destroy'])->name('devices.destroy');
+Route::get('/devices/{device}/status', [DeviceController::class, 'status'])->name('devices.status');
+Route::post('/devices/{device}/test', [DeviceController::class, 'test'])->name('devices.test');
+Route::post('/devices/{device}/sync-logs', [DeviceController::class, 'syncLogs'])->name('devices.sync-logs');
+Route::post('/devices/{device}/sync-users', [DeviceController::class, 'syncUsers'])->name('devices.sync-users');
+Route::post('/devices/{device}/sync-time', [DeviceController::class, 'syncTime'])->name('devices.sync-time');
+Route::post('/devices/{device}/clear-logs', [DeviceController::class, 'clearLogs'])->name('devices.clear-logs');
+
+Route::post('/auto-sync', [DeviceController::class, 'autoSyncSettings'])->name('auto-sync.settings');
+Route::post('/devices/{device}/toggle-auto', [DeviceController::class, 'toggleAuto'])->name('devices.toggle-auto');
+
+Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance.index');
+Route::get('/attendance/export', [AttendanceController::class, 'export'])->name('attendance.export');

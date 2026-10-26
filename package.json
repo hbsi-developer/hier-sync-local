@@ -1,0 +1,40 @@
+{
+    "name": "hierpayroll-ast",
+    "productName": "Hierpayroll AST",
+    "version": "1.0.0",
+    "description": "Desktop app for ZKTeco attendance devices (Laravel + Electron)",
+    "author": "Hier Business Solutions Inc.",
+    "main": "electron/main.js",
+    "private": true,
+    "scripts": {
+        "start": "electron .",
+        "stage": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stage.ps1",
+        "dist": "npm run stage && electron-builder --win --x64"
+    },
+    "devDependencies": {
+        "electron": "^33.0.0",
+        "electron-builder": "^25.0.0"
+    },
+    "build": {
+        "appId": "com.hierpayroll.ast",
+        "productName": "Hierpayroll AST",
+        "directories": { "output": "dist" },
+        "files": ["electron/**", "package.json"],
+        "extraResources": [
+            { "from": "build-stage/php", "to": "php" },
+            { "from": "build-stage/laravel", "to": "laravel" }
+        ],
+        "win": {
+            "target": "nsis",
+            "signAndEditExecutable": false,
+            "requestedExecutionLevel": "asInvoker"
+        },
+        "nsis": {
+            "oneClick": false,
+            "perMachine": true,
+            "allowToChangeInstallationDirectory": true,
+            "include": "build/installer.nsh",
+            "artifactName": "Hierpayroll-AST-Setup-${version}.exe"
+        }
+    }
+}
