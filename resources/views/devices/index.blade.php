@@ -74,7 +74,6 @@
                     <div class="menu">
                         <button type="button" data-device="{{ json_encode($d->only(['id', 'name', 'ip', 'port', 'machine_number'])) }}" onclick="openEdit(JSON.parse(this.dataset.device))"><x-icon name="edit"/> Edit device</button>
                         <form method="post" action="{{ route('devices.sync-time', $d) }}">@csrf<button><x-icon name="clock"/> Set device time</button></form>
-                        <form method="post" action="{{ route('devices.clear-logs', $d) }}" onsubmit="return confirm('Clear ALL attendance logs on the device? Pull logs first.')">@csrf<button class="danger"><x-icon name="trash"/> Clear device logs</button></form>
                         <form method="post" action="{{ route('devices.destroy', $d) }}" onsubmit="return confirm('Remove this device and its local data?')">@csrf @method('DELETE')<button class="danger"><x-icon name="trash"/> Remove device</button></form>
                     </div>
                 </details>

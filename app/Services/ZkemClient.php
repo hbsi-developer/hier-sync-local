@@ -81,10 +81,20 @@ class ZkemClient
         return (bool) $this->call('settime');
     }
 
-    /** @return array<int, array{enroll_number:string,name:string,privilege:int,enabled:bool}> */
+    /** @return array<int, array{enroll_number:string,name:string,card_number:string,privilege:int,enabled:bool}> */
     public function users(): array
     {
         return $this->call('users');
+    }
+
+    /**
+     * Edit an existing user on the device: set the card number (blank clears it) and optionally the name.
+     *
+     * @return array{enroll_number:string,name:string,card_number:string}
+     */
+    public function setUser(string $enrollNumber, string $cardNumber, ?string $name = null): array
+    {
+        return $this->call('setuser', [$enrollNumber, $cardNumber === '' ? '0' : $cardNumber, $name === null ? '' : base64_encode($name)]);
     }
 
     /** @return array<int, array{enroll_number:string,punched_at:Carbon,verify_mode:int,in_out_mode:int,work_code:int}> */
@@ -96,14 +106,12 @@ class ZkemClient
         );
     }
 
-    public function clearAttendance(): bool
-    {
-        return (bool) $this->call('clearlogs');
-    }
-
-    private function call(string $command): mixed
+    private function call(string $command, array $extra = []): mixed
     {
         $cmd = sprintf('"%s" %s %s %d %d', self::bridgePath(), $command, escapeshellarg($this->ip), $this->port, $this->machineNumber);
+        foreach ($extra as $arg) {
+            $cmd .= ' '.escapeshellarg((string) $arg);
+        }
         $output = shell_exec($cmd.' 2>&1');
         $result = json_decode((string) $output, true);
 

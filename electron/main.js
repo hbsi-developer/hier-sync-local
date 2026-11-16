@@ -157,6 +157,13 @@ async function createWindow() {
     win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(SPLASH));
     win.once('ready-to-show', () => { if (!startHidden) win.show(); });
 
+    // Windows/Electron can leave the page without keyboard focus (inputs show but won't accept typing),
+    // e.g. after the splash is swapped for the app or after a native confirm() dialog. Re-focus the page.
+    const focusPage = () => { if (win && !win.isDestroyed() && win.isFocused()) win.webContents.focus(); };
+    win.on('focus', focusPage);
+    win.webContents.on('did-finish-load', focusPage);
+    win.webContents.on('dom-ready', focusPage);
+
     // Closing the window keeps the app (and auto sync) running in the system tray.
     win.on('close', (e) => {
         if (quitting) return;

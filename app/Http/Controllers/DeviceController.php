@@ -116,14 +116,6 @@ class DeviceController extends Controller
         );
     }
 
-    public function clearLogs(Device $device): RedirectResponse
-    {
-        return $this->run(
-            fn (ZkemClient $zk) => $zk->clearAttendance() ? 'Attendance cleared on the device (local copy kept).' : 'Device refused to clear logs.',
-            $device
-        );
-    }
-
     private function run(callable $action, Device $device): RedirectResponse
     {
         try {

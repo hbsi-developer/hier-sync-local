@@ -2,7 +2,8 @@
 // PHP's COM layer cannot marshal the SDK's by-reference integer out-parameters
 // ("Type mismatch"), so Laravel shells out to this tool and reads JSON from stdout.
 //
-//   zkbridge.exe <info|users|logs|settime|clearlogs> <ip> <port> <machineNo>
+//   zkbridge.exe <info|users|logs|settime> <ip> <port> <machineNo>
+//   zkbridge.exe setuser <ip> <port> <machineNo> <enrollNo> <cardNo> [nameBase64]
 using System;
 using System.Collections.Generic;
 using System.Web.Script.Serialization;
@@ -29,7 +30,7 @@ static class ZkBridge
             }
 
             object data;
-            try { data = Run(zk, cmd, mn); }
+            try { data = Run(zk, cmd, mn, args); }
             finally { try { zk.Disconnect(); } catch { } }
 
             Console.Out.Write(json.Serialize(new Dictionary<string, object> { { "ok", true }, { "data", data } }));
@@ -42,7 +43,74 @@ static class ZkBridge
         }
     }
 
-    static object Run(dynamic zk, string cmd, int mn)
+    // Older devices (e.g. ZKTeco F8, black&white models) don't speak the SSR_* protocol: SSR_GetAllUserInfo
+    // returns garbage there. The manual says to use the plain GetAllUserInfo / GetGeneralLogData instead.
+    // Detect by checking whether the first SSR record has a sane (digits-only) user ID.
+    static bool? _legacy;
+    static bool IsLegacy(dynamic zk, int mn)
+    {
+        if (_legacy.HasValue) return _legacy.Value;
+        bool legacy = false;
+        try
+        {
+            if (zk.ReadAllUserID(mn))
+            {
+                string enroll = "", name = "", pwd = ""; int priv = 0; bool en = false;
+                if (zk.SSR_GetAllUserInfo(mn, out enroll, out name, out pwd, out priv, out en))
+                {
+                    enroll = (enroll ?? "").Trim();
+                    legacy = enroll.Length == 0 || !System.Text.RegularExpressions.Regex.IsMatch(enroll, "^[0-9]+$");
+                }
+            }
+        }
+        catch { legacy = true; }
+        _legacy = legacy;
+        return legacy;
+    }
+
+    static void ReadUsersLegacy(dynamic zk, int mn, List<object> list)
+    {
+        if (!zk.ReadAllUserID(mn)) return;
+        int enroll = 0, priv = 0; string name = "", pwd = ""; bool enabled = false;
+        while (zk.GetAllUserInfo(mn, ref enroll, ref name, ref pwd, ref priv, ref enabled))
+            list.Add(new Dictionary<string, object> {
+                { "enroll_number", enroll.ToString() }, { "name", (name ?? "").Trim() },
+                { "card_number", ReadCard(zk) },
+                { "privilege", priv }, { "enabled", enabled } });
+    }
+
+    static void ReadLogsLegacy(dynamic zk, int mn, List<object> list)
+    {
+        if (!zk.ReadGeneralLogData(mn)) return;
+        int tm = 0, enroll = 0, em = 0, ver = 0, io = 0, y = 0, mo = 0, d = 0, h = 0, mi = 0;
+        while (zk.GetGeneralLogData(mn, ref tm, ref enroll, ref em, ref ver, ref io, ref y, ref mo, ref d, ref h, ref mi))
+            list.Add(new Dictionary<string, object> {
+                { "enroll_number", enroll.ToString() },
+                { "punched_at", string.Format("{0:D4}-{1:D2}-{2:D2} {3:D2}:{4:D2}:00", y, mo, d, h, mi) },
+                { "verify_mode", ver }, { "in_out_mode", io }, { "work_code", 0 } });
+    }
+
+    static string ReadCard(dynamic zk)
+    {
+        try { string c = ""; zk.GetStrCardNumber(out c); c = (c ?? "").Trim(); return c == "0" ? "" : c; }
+        catch { return ""; }
+    }
+
+    // Re-reads the user from the device so the caller sees what was actually stored.
+    static string ReadCard(dynamic zk, string enroll, int mn, bool legacy)
+    {
+        try
+        {
+            string n = "", p = ""; int pr = 0; bool e = false;
+            bool ok = legacy ? (bool)zk.GetUserInfo(mn, int.Parse(enroll), ref n, ref p, ref pr, ref e)
+                             : (bool)zk.SSR_GetUserInfo(mn, enroll, out n, out p, out pr, out e);
+            if (ok) return ReadCard(zk);
+        }
+        catch { }
+        return "";
+    }
+
+    static object Run(dynamic zk, string cmd, int mn, string[] args)
     {
         switch (cmd)
         {
@@ -59,29 +127,65 @@ static class ZkBridge
             case "settime":
                 return (bool)zk.SetDeviceTime(mn);
 
-            case "clearlogs":
-            {
-                zk.EnableDevice(mn, false);
-                try { return (bool)zk.ClearGLog(mn); } finally { zk.EnableDevice(mn, true); }
-            }
-
             case "users":
             {
                 var list = new List<object>();
                 zk.EnableDevice(mn, false);
                 try
                 {
+                    if (IsLegacy(zk, mn)) { ReadUsersLegacy(zk, mn, list); return list; }
                     if (zk.ReadAllUserID(mn))
                     {
                         string enroll = "", name = "", pwd = ""; int priv = 0; bool enabled = false;
                         while (zk.SSR_GetAllUserInfo(mn, out enroll, out name, out pwd, out priv, out enabled))
                             list.Add(new Dictionary<string, object> {
                                 { "enroll_number", (enroll ?? "").Trim() }, { "name", (name ?? "").Trim() },
+                                { "card_number", ReadCard(zk) },
                                 { "privilege", priv }, { "enabled", enabled } });
                     }
                 }
                 finally { zk.EnableDevice(mn, true); }
                 return list;
+            }
+
+            case "setuser":
+            {
+                // Edits an existing user's card number (and optionally name). The card must be set
+                // BEFORE SSR_SetUserInfo; the existing password/privilege are read back and re-sent
+                // because SSR_SetUserInfo would otherwise blank the password (manual 6.7, 6.12).
+                if (args.Length < 6) throw new Exception("usage: setuser <ip> <port> <machineNo> <enrollNo> <cardNo> [nameBase64]");
+                string enrollNo = args[4];
+                string card = args[5].Trim();
+                if (card == "") card = "0";
+                string newName = args.Length > 6 && args[6] != ""
+                    ? System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(args[6])) : null;
+
+                zk.EnableDevice(mn, false);
+                try
+                {
+                    string name = "", pwd = ""; int priv = 0; bool en = false;
+                    bool legacy = IsLegacy(zk, mn);
+                    int enrollInt = 0;
+                    if (legacy && !int.TryParse(enrollNo, out enrollInt)) throw new Exception("Enroll number must be numeric on this device.");
+                    bool found = legacy
+                        ? (bool)zk.GetUserInfo(mn, enrollInt, ref name, ref pwd, ref priv, ref en)
+                        : (bool)zk.SSR_GetUserInfo(mn, enrollNo, out name, out pwd, out priv, out en);
+                    if (!found) throw new Exception("User " + enrollNo + " was not found on the device.");
+
+                    zk.SetStrCardNumber(card);
+                    bool saved = legacy
+                        ? (bool)zk.SetUserInfo(mn, enrollInt, newName ?? name, pwd, priv, en)
+                        : (bool)zk.SSR_SetUserInfo(mn, enrollNo, newName ?? name, pwd, priv, en);
+                    if (!saved)
+                    {
+                        int err = 0; zk.GetLastError(ref err);
+                        throw new Exception("Device refused the update (SDK error " + err + "). The card number may already belong to another user.");
+                    }
+                    zk.RefreshData(mn);
+                    return new Dictionary<string, object> {
+                        { "enroll_number", enrollNo }, { "name", (newName ?? name ?? "").Trim() }, { "card_number", ReadCard(zk, enrollNo, mn, legacy) } };
+                }
+                finally { zk.EnableDevice(mn, true); }
             }
 
             case "logs":
@@ -90,6 +194,7 @@ static class ZkBridge
                 zk.EnableDevice(mn, false);
                 try
                 {
+                    if (IsLegacy(zk, mn)) { ReadLogsLegacy(zk, mn, list); return list; }
                     if (zk.ReadGeneralLogData(mn))
                     {
                         string enroll = ""; int ver = 0, io = 0, y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0, wc = 0;

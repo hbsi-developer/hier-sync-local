@@ -15,10 +15,12 @@ Route::post('/devices/{device}/test', [DeviceController::class, 'test'])->name('
 Route::post('/devices/{device}/sync-logs', [DeviceController::class, 'syncLogs'])->name('devices.sync-logs');
 Route::post('/devices/{device}/sync-users', [DeviceController::class, 'syncUsers'])->name('devices.sync-users');
 Route::post('/devices/{device}/sync-time', [DeviceController::class, 'syncTime'])->name('devices.sync-time');
-Route::post('/devices/{device}/clear-logs', [DeviceController::class, 'clearLogs'])->name('devices.clear-logs');
 
 Route::post('/auto-sync', [DeviceController::class, 'autoSyncSettings'])->name('auto-sync.settings');
 Route::post('/devices/{device}/toggle-auto', [DeviceController::class, 'toggleAuto'])->name('devices.toggle-auto');
 
-Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance.index');
+Route::get('/users', [\App\Http\Controllers\UserController::class, 'index'])->name('users.index');
+Route::put('/users/{user}', [\App\Http\Controllers\UserController::class, 'update'])->name('users.update');
+
+Route::get('/attendance',[AttendanceController::class, 'index'])->name('attendance.index');
 Route::get('/attendance/export', [AttendanceController::class, 'export'])->name('attendance.export');

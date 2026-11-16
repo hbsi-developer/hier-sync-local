@@ -125,6 +125,7 @@
     <div class="brand"><i><x-icon name="clock"/></i> Hierpayroll AST</div>
     <nav class="nav">
         <a href="{{ route('devices.index') }}" class="{{ request()->routeIs('devices.*') ? 'on' : '' }}"><x-icon name="cpu"/> Devices</a>
+        <a href="{{ route('users.index') }}" class="{{ request()->routeIs('users.*') ? 'on' : '' }}"><x-icon name="users"/> Users</a>
         <a href="{{ route('attendance.index') }}" class="{{ request()->routeIs('attendance.*') ? 'on' : '' }}"><x-icon name="list"/> Attendance</a>
     </nav>
     <small>ZKTeco SDK 6.3.1.37</small>
