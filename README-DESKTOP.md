@@ -1,4 +1,4 @@
-# Hierpayroll AST (Laravel + Electron desktop app)
+# Hier Sync Local (Laravel + Electron desktop app)
 
 Pulls users and attendance from ZKTeco devices using the official Standalone SDK (`zkemkeeper.dll`, COM) and stores them in a local SQLite database.
 

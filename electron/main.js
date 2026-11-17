@@ -9,22 +9,39 @@ const appRoot = packaged ? path.join(process.resourcesPath, 'laravel') : path.jo
 // User data (database, logs, sessions) lives outside the install folder so updates never wipe it.
 const dataDir = packaged ? app.getPath('userData') : path.join(appRoot, 'storage', 'desktop');
 
-// The app was renamed from "ZK Attendance"; carry over data saved under the old name.
+// The app was renamed ("ZK Attendance" -> "Hierpayroll AST" -> "Hier Sync Local"); carry over
+// data saved under an old name, newest first.
 if (packaged) {
-    const oldDir = path.join(app.getPath('appData'), 'ZK Attendance');
-    try {
-        if (fs.existsSync(oldDir) && !fs.existsSync(dataDir)) fs.renameSync(oldDir, dataDir);
-    } catch (e) {
-        console.log('[migrate-userdata]', e.message);
+    for (const oldName of ['Hierpayroll AST', 'ZK Attendance']) {
+        const oldDir = path.join(app.getPath('appData'), oldName);
+        try {
+            if (fs.existsSync(oldDir) && !fs.existsSync(dataDir)) fs.renameSync(oldDir, dataDir);
+        } catch (e) {
+            console.log('[migrate-userdata]', e.message);
+        }
     }
+}
+
+// Dev fallback: newest x64 PHP 8.x installed under Laragon, highest version first.
+function laragonPhps() {
+    const root = 'C:\\laragon\\bin\\php';
+    const ver = (d) => (d.match(/^php-(\d+)\.(\d+)\.(\d+)/) || []).slice(1).map(Number);
+    let dirs = [];
+    try { dirs = fs.readdirSync(root); } catch { return []; }
+    return dirs
+        .filter((d) => /^php-8\./.test(d) && /x64/i.test(d))
+        .sort((a, b) => {
+            const [x, y] = [ver(a), ver(b)];
+            return (y[0] - x[0]) || (y[1] - x[1]) || (y[2] - x[2]);
+        })
+        .map((d) => path.join(root, d, 'php.exe'));
 }
 
 function findPhp() {
     const candidates = [
         packaged ? path.join(process.resourcesPath, 'php', 'php.exe') : path.join(appRoot, 'php', 'php.exe'),
         process.env.PHP_BINARY,
-        ...['php-8.4.26-Win32-vs17-x64', 'php-8.3.30-Win32-vs16-x64', 'php-8.1.10-Win32-vs16-x64']
-            .map((d) => path.join('C:\\laragon\\bin\\php', d, 'php.exe')),
+        ...laragonPhps(),
     ].filter(Boolean);
     return candidates.find((p) => fs.existsSync(p));
 }
@@ -132,7 +149,7 @@ let tray;
 let quitting = false;
 let notifiedTray = false;
 
-const SPLASH =`<!doctype html><meta charset="utf-8"><title>Hierpayroll AST</title>
+const SPLASH =`<!doctype html><meta charset="utf-8"><title>Hier Sync Local</title>
 <style>
   html,body{height:100%;margin:0}
   body{display:grid;place-items:center;background:#212735;color:#fff;font:600 15px "Montserrat","Segoe UI",sans-serif}
@@ -142,11 +159,11 @@ const SPLASH =`<!doctype html><meta charset="utf-8"><title>Hierpayroll AST</titl
   p{margin:0;color:#9aa4b8;font-weight:500}
   @keyframes s{to{transform:rotate(360deg)}}
 </style>
-<div class="box"><div class="ring"></div><h1>Hierpayroll AST</h1><p>Starting up…</p></div>`;
+<div class="box"><div class="ring"></div><h1>Hier Sync Local</h1><p>Starting up…</p></div>`;
 
 async function createWindow() {
     win = new BrowserWindow({
-        width: 1200, height: 800, title: 'Hierpayroll AST', icon: ICON_PATH,
+        width: 1200, height: 800, title: 'Hier Sync Local', icon: ICON_PATH,
         autoHideMenuBar: true, backgroundColor: '#212735', show: false,
         maximizable: false, fullscreenable: false,
     });
@@ -171,7 +188,7 @@ async function createWindow() {
         win.hide();
         if (!notifiedTray && Notification.isSupported()) {
             notifiedTray = true;
-            new Notification({ title: 'Hierpayroll AST is still running', body: 'Auto sync continues in the background. Use the tray icon to open or quit.' }).show();
+            new Notification({ title: 'Hier Sync Local is still running', body: 'Auto sync continues in the background. Use the tray icon to open or quit.' }).show();
         }
     });
 
@@ -180,7 +197,7 @@ async function createWindow() {
         await win.loadURL(`http://127.0.0.1:${port}/`);
         startAutoSync(findPhp());
     } catch (e) {
-        dialog.showErrorBox('Hierpayroll AST failed to start', String(e.message || e));
+        dialog.showErrorBox('Hier Sync Local failed to start', String(e.message || e));
         quitting = true;
         app.quit();
     }
@@ -198,16 +215,16 @@ function runSyncNow() {
     if (!php) return;
     const p = spawn(php, [...phpArgs(php), 'artisan', 'devices:auto-sync', '--force'], { cwd: appRoot, env: laravelEnv(), windowsHide: true });
     p.on('close', () => {
-        if (Notification.isSupported()) new Notification({ title: 'Hierpayroll AST', body: 'Sync finished. Open the app to see the results.' }).show();
+        if (Notification.isSupported()) new Notification({ title: 'Hier Sync Local', body: 'Sync finished. Open the app to see the results.' }).show();
         if (win && win.isVisible()) win.webContents.reload();
     });
 }
 
 function createTray() {
     tray = new Tray(nativeImage.createFromPath(ICON_PATH).resize({ width: 16, height: 16 }));
-    tray.setToolTip('Hierpayroll AST');
+    tray.setToolTip('Hier Sync Local');
     const menu = () => Menu.buildFromTemplate([
-        { label: 'Open Hierpayroll AST', click: showWindow },
+        { label: 'Open Hier Sync Local', click: showWindow },
         { label: 'Sync all devices now', click: runSyncNow },
         { type: 'separator' },
         {

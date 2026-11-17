@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Carbon\Carbon;
 use RuntimeException;
+use Symfony\Component\Process\Process;
 
 /**
  * Talks to ZKTeco devices through bridge\zkbridge.exe, a small .NET tool that wraps the
@@ -25,18 +26,65 @@ class ZkemClient
         return base_path('bridge/zkbridge.exe');
     }
 
+    public static function sdkRegistered(): bool
+    {
+        exec('reg query "HKCR\\zkemkeeper.ZKEM" 2>&1', $out, $code);
+
+        return $code === 0;
+    }
+
     public static function environmentProblem(): ?string
     {
         if (! is_file(self::bridgePath())) {
             return 'bridge\\zkbridge.exe is missing. Build it with bridge\\build.bat.';
         }
 
-        exec('reg query "HKCR\\zkemkeeper.ZKEM" 2>&1', $out, $code);
-        if ($code !== 0) {
+        if (! self::sdkRegistered()) {
             return 'The ZKTeco SDK is not registered. Run sdk\\register-sdk.bat as Administrator.';
         }
 
         return null;
+    }
+
+    /**
+     * Runs sdk\register-sdk.ps1 elevated (Windows shows a UAC prompt) and waits for it.
+     *
+     * @throws RuntimeException when the prompt is declined or registration fails.
+     */
+    public static function registerSdk(): void
+    {
+        $script = base_path('sdk/register-sdk.ps1');
+        if (! is_file($script)) {
+            throw new RuntimeException('sdk\\register-sdk.ps1 is missing.');
+        }
+
+        // The script path travels in an environment variable so no shell quoting is needed.
+        $launcher = <<<'PS'
+            $q = [char]34
+            $a = '-NoProfile -ExecutionPolicy Bypass -File ' + $q + $env:ZK_SDK_SCRIPT + $q
+            try {
+                $p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList $a
+                exit $p.ExitCode
+            } catch {
+                exit 1223
+            }
+            PS;
+
+        $process = new Process(
+            ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $launcher],
+            null,
+            ['ZK_SDK_SCRIPT' => str_replace('/', '\\', $script)],
+        );
+        $process->setTimeout(180);
+        $process->run();
+
+        $code = $process->getExitCode();
+        if ($code === 1223) {
+            throw new RuntimeException('Registration was cancelled. Administrator permission is required to register the SDK.');
+        }
+        if ($code !== 0 || ! self::sdkRegistered()) {
+            throw new RuntimeException("The ZKTeco SDK could not be registered (code {$code}). Try running sdk\\register-sdk.bat as Administrator.");
+        }
     }
 
     public function connect(string $ip, int $port = 4370): static

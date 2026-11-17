@@ -19,6 +19,8 @@ Route::post('/devices/{device}/sync-time', [DeviceController::class, 'syncTime']
 Route::post('/auto-sync', [DeviceController::class, 'autoSyncSettings'])->name('auto-sync.settings');
 Route::post('/devices/{device}/toggle-auto', [DeviceController::class, 'toggleAuto'])->name('devices.toggle-auto');
 
+Route::post('/sdk/register', [DeviceController::class, 'registerSdk'])->name('sdk.register');
+
 Route::get('/users', [\App\Http\Controllers\UserController::class, 'index'])->name('users.index');
 Route::put('/users/{user}', [\App\Http\Controllers\UserController::class, 'update'])->name('users.update');
 

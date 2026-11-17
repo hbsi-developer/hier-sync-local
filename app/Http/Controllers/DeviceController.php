@@ -25,6 +25,17 @@ class DeviceController extends Controller
         ]);
     }
 
+    public function registerSdk(): RedirectResponse
+    {
+        try {
+            ZkemClient::registerSdk();
+
+            return back()->with('ok', 'ZKTeco SDK registered.');
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+    }
+
     public function store(Request $request): RedirectResponse
     {
         Device::create($this->validated($request));

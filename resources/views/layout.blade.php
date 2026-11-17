@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Hierpayroll AST</title>
+    <title>Hier Sync Local</title>
     <style>
         /* Brand: HBSI Brand Guideline. Primary greens #15DD58 / #02BC4D / #2AF56D, accents #5583ED + #FFCC00, neutrals #212735 + #FFFFFF. Typeface: Montserrat. */
         @font-face { font-family:"Montserrat"; src:url("{{ asset('fonts/Montserrat.ttf') }}") format("truetype"); font-weight:100 900; font-style:normal; font-display:swap; }
@@ -111,7 +111,8 @@
         .toast { padding:12px 16px; border-radius:12px; background:var(--surface); border:1px solid var(--line); box-shadow:0 10px 30px rgba(0,0,0,.18); display:flex; gap:10px; align-items:flex-start; animation:in .2s ease-out; }
         .toast.ok { border-left:4px solid var(--good); } .toast.err { border-left:4px solid var(--bad); }
         @keyframes in { from { transform:translateY(10px); opacity:0; } }
-        .banner { padding:12px 16px; border-radius:12px; background:var(--warn-soft); color:var(--warn); margin-bottom:18px; font-weight:500; }
+        .banner { padding:12px 16px; border-radius:12px; background:var(--warn-soft); color:var(--warn); margin-bottom:18px; font-weight:500; display:flex; align-items:center; justify-content:space-between; gap:14px; }
+        .banner button { flex-shrink:0; white-space:nowrap; }
         dialog { border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); color:var(--text); padding:0; width:min(480px,92vw); box-shadow:0 24px 60px rgba(0,0,0,.35); }
         dialog::backdrop { background:rgba(10,14,25,.55); backdrop-filter:blur(2px); }
         dialog form { padding:22px; display:grid; gap:14px; } dialog h2 { margin:0 0 2px; font-size:18px; }
@@ -122,7 +123,7 @@
 <body>
 
 <aside class="side">
-    <div class="brand"><i><x-icon name="clock"/></i> Hierpayroll AST</div>
+    <div class="brand"><i><x-icon name="clock"/></i> Hier Sync Local</div>
     <nav class="nav">
         <a href="{{ route('devices.index') }}" class="{{ request()->routeIs('devices.*') ? 'on' : '' }}"><x-icon name="cpu"/> Devices</a>
         <a href="{{ route('users.index') }}" class="{{ request()->routeIs('users.*') ? 'on' : '' }}"><x-icon name="users"/> Users</a>
@@ -131,7 +132,17 @@
     <small>ZKTeco SDK 6.3.1.37</small>
 </aside>
 <main class="content">
-    @if (isset($problem) && $problem) <div class="banner"><strong>SDK not ready:</strong> {{ $problem }}</div> @endif
+    @if (isset($problem) && $problem)
+        <div class="banner">
+            <span><strong>SDK not ready:</strong> {{ $problem }}</span>
+            @if (! \App\Services\ZkemClient::sdkRegistered())
+                <form method="post" action="{{ route('sdk.register') }}" onsubmit="const b=this.querySelector('button');b.disabled=true;b.textContent='Waiting for permission…';">
+                    @csrf
+                    <button class="primary sm">Register SDK</button>
+                </form>
+            @endif
+        </div>
+    @endif
     @yield('content')
 </main>
 <div class="toasts" id="toasts">
