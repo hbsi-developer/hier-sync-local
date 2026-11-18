@@ -128,6 +128,7 @@
         <a href="{{ route('devices.index') }}" class="{{ request()->routeIs('devices.*') ? 'on' : '' }}"><x-icon name="cpu"/> Devices</a>
         <a href="{{ route('users.index') }}" class="{{ request()->routeIs('users.*') ? 'on' : '' }}"><x-icon name="users"/> Users</a>
         <a href="{{ route('attendance.index') }}" class="{{ request()->routeIs('attendance.*') ? 'on' : '' }}"><x-icon name="list"/> Attendance</a>
+        <a href="{{ route('sync.index') }}" class="{{ request()->routeIs('sync.*') ? 'on' : '' }}"><x-icon name="sync"/> Payroll Sync</a>
     </nav>
     <small>ZKTeco SDK 6.3.1.37</small>
 </aside>
