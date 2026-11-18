@@ -22,3 +22,7 @@ The shell finds PHP in `php\php.exe`, then `%PHP_BINARY%`, then Laragon's PHP. I
 ## Notes
 - If the Devices page shows "SDK not ready", the DLL isn't registered or PHP/DLL bitness differs.
 - By-reference COM out-parameters (`ZkemClient::out()`) are untested against a real device; verify with **Test** on the Devices page first.
+
+## Push to Hier Payroll
+Every 2 minutes the shell runs `php artisan logs:push`, which sends unsent `attendance_logs` (oldest first, 500 per request) to `{website URL}/api/hier-sync/attendance-logs` with HTTP Basic Auth. Configure URL, username and password on the **Payroll Sync** page. The password is encrypted with Electron `safeStorage` (`push-credentials.bin` in user data) and only passed to the artisan process through the `HIER_PUSH_PASSWORD` environment variable. HTTPS is required (plain HTTP only when `APP_ENV=local`).
+Request: `{installation_id, logs:[{ref, device_serial, enroll_number, punched_at, verify_mode, in_out_mode, work_code}]}`. Response: `{accepted:[ref...], rejected:[{ref, reason}]}`. Only accepted refs are marked `sent_at`.
