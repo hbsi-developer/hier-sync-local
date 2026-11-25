@@ -17,7 +17,10 @@ Then `npm run dist` builds the installer with the same version in its name.
 
 ## [Unreleased]
 
-Everything since 1.0.0 (2026-11-18 push feature onward). Suggested next version: **1.1.0** (new features).
+## [1.1.0] - 2026-11-25
+
+Everything since 1.0.0: Settings and Sync logs pages, per-device push to the new Hier Payroll API, date range push,
+versioning and project tooling.
 
 ### Added
 - **Settings page** (sidebar): Hier Payroll connection (switch, website URL, username, password, auto-push interval,

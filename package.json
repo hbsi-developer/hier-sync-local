@@ -1,7 +1,7 @@
 {
     "name": "hier-sync-local",
     "productName": "Hier Sync Local",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Desktop app for ZKTeco attendance devices (Laravel + Electron)",
     "author": "Hier Business Solutions Inc.",
     "main": "electron/main.js",
@@ -22,11 +22,22 @@
     "build": {
         "appId": "com.hierpayroll.hiersynclocal",
         "productName": "Hier Sync Local",
-        "directories": { "output": "dist" },
-        "files": ["electron/**", "package.json"],
+        "directories": {
+            "output": "dist"
+        },
+        "files": [
+            "electron/**",
+            "package.json"
+        ],
         "extraResources": [
-            { "from": "build-stage/php", "to": "php" },
-            { "from": "build-stage/laravel", "to": "laravel" }
+            {
+                "from": "build-stage/php",
+                "to": "php"
+            },
+            {
+                "from": "build-stage/laravel",
+                "to": "laravel"
+            }
         ],
         "win": {
             "target": "nsis",

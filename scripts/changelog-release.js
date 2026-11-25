@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const file = path.join(__dirname, '..', 'CHANGELOG.md');
-const version = process.env.npm_package_version;
+const version = process.env.npm_package_version || require('../package.json').version;
 if (!fs.existsSync(file) || !version) process.exit(0);
 
 const date = new Date().toISOString().slice(0, 10);
