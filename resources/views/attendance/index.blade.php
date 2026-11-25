@@ -34,7 +34,7 @@
         <thead><tr><th>Employee</th><th>Date &amp; time</th><th>Type</th><th>Verified by</th><th>Device</th></tr></thead>
         <tbody>
         @forelse ($logs as $l)
-            @php $name = $names[$l->enroll_number] ?? null; @endphp
+            @php $name = $names[$l->device_id.'|'.$l->enroll_number] ?? null; @endphp
             <tr>
                 <td>
                     <div class="who">

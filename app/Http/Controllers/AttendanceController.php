@@ -17,24 +17,30 @@ class AttendanceController extends Controller
         return view('attendance.index', [
             'logs' => $logs,
             'devices' => Device::orderBy('name')->get(),
-            'names' => DeviceUser::pluck('name', 'enroll_number'),
+            'names' => $this->names(),
         ]);
     }
 
     public function export(Request $request): StreamedResponse
     {
-        $names = DeviceUser::pluck('name', 'enroll_number');
+        $names = $this->names();
         $query = $this->query($request);
 
         return response()->streamDownload(function () use ($query, $names) {
             $out = fopen('php://output', 'w');
             fputcsv($out, ['Device', 'Enroll No', 'Name', 'Punched At', 'Type', 'Verify']);
             $query->lazy()->each(fn ($l) => fputcsv($out, [
-                $l->device->name, $l->enroll_number, $names[$l->enroll_number] ?? '',
+                $l->device->name, $l->enroll_number, $names[$l->device_id.'|'.$l->enroll_number] ?? '',
                 $l->punched_at->toDateTimeString(), $l->in_out_label, $l->verify_label,
             ]));
             fclose($out);
         }, 'attendance-'.now()->format('Ymd-His').'.csv', ['Content-Type' => 'text/csv']);
+    }
+
+    /** Names keyed by "device_id|enroll_number": the same enroll number is a different person on each device. */
+    private function names(): \Illuminate\Support\Collection
+    {
+        return DeviceUser::all()->mapWithKeys(fn (DeviceUser $u) => [$u->device_id.'|'.$u->enroll_number => $u->name]);
     }
 
     private function query(Request $request)

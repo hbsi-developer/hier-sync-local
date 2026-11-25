@@ -20,7 +20,7 @@ class AutoSyncDevices extends Command
             return self::SUCCESS;
         }
 
-        $minutes = max(30, (int) Setting::get('auto_sync_minutes', 30));
+        $minutes = max(5, (int) Setting::get('auto_sync_minutes', 30));
 
         // The desktop shell ticks every minute; skip if a previous run is still going.
         $lock = Cache::lock('devices-auto-sync', 600);

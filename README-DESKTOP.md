@@ -22,3 +22,9 @@ The shell finds PHP in `php\php.exe`, then `%PHP_BINARY%`, then Laragon's PHP. I
 ## Notes
 - If the Devices page shows "SDK not ready", the DLL isn't registered or PHP/DLL bitness differs.
 - By-reference COM out-parameters (`ZkemClient::out()`) are untested against a real device; verify with **Test** on the Devices page first.
+
+## Push to Hier Payroll
+Configure the website URL, username, password and push interval on the **Settings** page; push by date range and see status on
+**Payroll Sync**; see history on **Sync logs**. The password is encrypted with Electron `safeStorage` and only passed to the
+artisan process through the `HIER_PUSH_PASSWORD` environment variable. Full contract and behaviour: `docs/PUSH-API.md`.
+More documentation is in `docs/README.md`.

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(C:/laragon/bin/php/php-8.4.26-Win32-vs17-x64/php.exe artisan test:*)",
+      "Bash(C:/laragon/bin/php/php-8.4.26-Win32-vs17-x64/php.exe -l:*)",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate.ps1:*)",
+      "Bash(node --check:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./storage/desktop/app.key)",
+      "Read(./storage/desktop/push-credentials.bin)"
+    ]
+  }
+}

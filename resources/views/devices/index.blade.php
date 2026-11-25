@@ -16,18 +16,6 @@
     <div class="card stat"><div class="ic"><x-icon name="clock"/></div><div><b>{{ number_format($today) }}</b><span>Punches today</span></div></div>
 </div>
 
-<div class="card" style="margin-bottom:18px">
-    <form method="post" action="{{ route('auto-sync.settings') }}" class="row" style="align-items:center">
-        @csrf
-        <label class="switch" title="Auto sync"><input type="checkbox" name="enabled" value="1" @checked($autoEnabled)><span></span></label>
-        <div style="flex:1; min-width:220px"><b>Auto sync</b><div class="muted">Pulls new logs in the background while the app is open.</div></div>
-        <label class="f" style="flex:0 0 150px">Every (min. 30 minutes)
-            <input name="minutes" type="number" min="30" max="1440" value="{{ $autoMinutes }}">
-        </label>
-        <button><x-icon name="sync"/> Save</button>
-    </form>
-</div>
-
 @if ($devices->isEmpty())
     <div class="card empty">
         <div class="ic"><x-icon name="cpu"/></div>
@@ -59,6 +47,14 @@
                 <div><b>{{ number_format($d->logs_count) }}</b><span>Records</span></div>
                 <div><b style="font-size:14px; padding-top:4px">{{ $d->last_synced_at?->diffForHumans(short: true) ?? '—' }}</b><span>Last sync</span></div>
             </div>
+
+            @php $lp = $lastPush[$d->id] ?? null; @endphp
+            @if ($lp)
+                <div class="muted" style="font-size:12px; margin-bottom:10px" title="{{ $lp->message }}">
+                    Last push: <span class="pill {{ $lp->level === 'success' ? 'good' : 'bad' }}"><span class="dot"></span> {{ $lp->level === 'success' ? 'Sent '.number_format($lp->records).' record(s)' : 'Failed' }}</span>
+                    {{ $lp->created_at?->diffForHumans() }}@if ($lp->level !== 'success') · {{ \Illuminate\Support\Str::limit($lp->message, 80) }}@endif
+                </div>
+            @endif
 
             @if ($d->last_sync_ok === false && $d->last_sync_message)
                 <div class="pill bad" style="border-radius:10px; margin-bottom:12px; white-space:normal">{{ \Illuminate\Support\Str::limit($d->last_sync_message, 110) }}</div>

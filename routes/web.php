@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\DeviceController;
+use App\Http\Controllers\SyncLogController;
+use App\Http\Controllers\SyncSettingsController;
+use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/devices');
@@ -21,8 +24,16 @@ Route::post('/devices/{device}/toggle-auto', [DeviceController::class, 'toggleAu
 
 Route::post('/sdk/register', [DeviceController::class, 'registerSdk'])->name('sdk.register');
 
-Route::get('/users', [\App\Http\Controllers\UserController::class, 'index'])->name('users.index');
-Route::put('/users/{user}', [\App\Http\Controllers\UserController::class, 'update'])->name('users.update');
+Route::get('/users', [UserController::class, 'index'])->name('users.index');
+Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
 
-Route::get('/attendance',[AttendanceController::class, 'index'])->name('attendance.index');
+Route::get('/settings', [SyncSettingsController::class, 'settings'])->name('settings.index');
+Route::get('/payroll-sync', [SyncSettingsController::class, 'index'])->name('sync.index');
+Route::post('/payroll-sync', [SyncSettingsController::class, 'save'])->name('sync.save');
+Route::post('/payroll-sync/retry-rejected', [SyncSettingsController::class, 'retryRejected'])->name('sync.retry-rejected');
+
+Route::get('/sync-logs', [SyncLogController::class, 'index'])->name('sync-logs.index');
+Route::get('/sync-logs/export', [SyncLogController::class, 'export'])->name('sync-logs.export');
+
+Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance.index');
 Route::get('/attendance/export', [AttendanceController::class, 'export'])->name('attendance.export');

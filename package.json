@@ -1,7 +1,7 @@
 {
     "name": "hier-sync-local",
     "productName": "Hier Sync Local",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Desktop app for ZKTeco attendance devices (Laravel + Electron)",
     "author": "Hier Business Solutions Inc.",
     "main": "electron/main.js",
@@ -9,7 +9,11 @@
     "scripts": {
         "start": "electron .",
         "stage": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stage.ps1",
-        "dist": "npm run stage && electron-builder --win --x64"
+        "dist": "npm run stage && electron-builder --win --x64",
+        "release:patch": "npm version patch -m \"Release v%s\"",
+        "release:minor": "npm version minor -m \"Release v%s\"",
+        "release:major": "npm version major -m \"Release v%s\"",
+        "version": "node scripts/changelog-release.js && git add CHANGELOG.md"
     },
     "devDependencies": {
         "electron": "^33.0.0",
@@ -18,14 +22,26 @@
     "build": {
         "appId": "com.hierpayroll.hiersynclocal",
         "productName": "Hier Sync Local",
-        "directories": { "output": "dist" },
-        "files": ["electron/**", "package.json"],
+        "directories": {
+            "output": "dist"
+        },
+        "files": [
+            "electron/**",
+            "package.json"
+        ],
         "extraResources": [
-            { "from": "build-stage/php", "to": "php" },
-            { "from": "build-stage/laravel", "to": "laravel" }
+            {
+                "from": "build-stage/php",
+                "to": "php"
+            },
+            {
+                "from": "build-stage/laravel",
+                "to": "laravel"
+            }
         ],
         "win": {
             "target": "nsis",
+            "icon": "electron/icon.png",
             "signAndEditExecutable": false,
             "requestedExecutionLevel": "asInvoker"
         },

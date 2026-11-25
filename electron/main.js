@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage } = require('electron');
+const { app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, safeStorage } = require('electron');
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const net = require('net');
@@ -77,7 +77,7 @@ function phpArgs(php) {
     ];
 }
 
-function laravelEnv() {
+function laravelEnv(extra = {}) {
     fs.mkdirSync(path.join(dataDir, 'storage', 'framework', 'views'), { recursive: true });
     fs.mkdirSync(path.join(dataDir, 'storage', 'framework', 'cache'), { recursive: true });
     fs.mkdirSync(path.join(dataDir, 'storage', 'framework', 'sessions'), { recursive: true });
@@ -94,6 +94,7 @@ function laravelEnv() {
 
     return {
         ...process.env,
+        APP_VERSION: app.getVersion(),
         APP_ENV: packaged ? 'production' : 'local',
         APP_DEBUG: packaged ? 'false' : 'true',
         APP_KEY: fs.readFileSync(keyFile, 'utf8'),
@@ -102,7 +103,9 @@ function laravelEnv() {
         SESSION_DRIVER: 'file',
         CACHE_STORE: 'file',
         QUEUE_CONNECTION: 'sync',
-        LARAVEL_STORAGE_PATH: path.join(dataDir, 'storage'),    };
+        LARAVEL_STORAGE_PATH: path.join(dataDir, 'storage'),
+        ...extra,
+    };
 }
 
 async function startLaravel() {
@@ -142,6 +145,107 @@ function startAutoSync(php) {
     autoSyncTimer = setInterval(tick, 60000);
 }
 
+// ---- Push to Hier Payroll -------------------------------------------------------------------
+// The password is encrypted with Electron safeStorage (Windows DPAPI) and kept in user data.
+// PHP cannot decrypt it, so only the spawned artisan process gets it, through its environment.
+const pwFile = () => path.join(dataDir, 'push-credentials.bin');
+
+function readPassword() {
+    try {
+        if (!fs.existsSync(pwFile()) || !safeStorage.isEncryptionAvailable()) return '';
+        return safeStorage.decryptString(fs.readFileSync(pwFile()));
+    } catch (e) {
+        console.log('[push] could not read saved password');
+        return '';
+    }
+}
+
+let pushTimer;
+let pushRunning = false;
+let appOrigin = '';
+
+// Runs `artisan logs:push ...` and resolves with its parsed JSON line. Never rejects.
+function runPush(args) {
+    return new Promise((resolve) => {
+        const php = findPhp();
+        if (!php) return resolve({ ok: false, message: 'php.exe not found.' });
+        const env = laravelEnv({ HIER_PUSH_PASSWORD: readPassword() });
+        const p = spawn(php, [...phpArgs(php), 'artisan', 'logs:push', '--json', ...args], { cwd: appRoot, env, windowsHide: true });
+        let out = '';
+        p.stdout.on('data', (d) => { out += d.toString(); });
+        p.stderr.on('data', (d) => console.log('[push:err]', d.toString().trim()));
+        p.on('error', (e) => resolve({ ok: false, message: e.message }));
+        p.on('close', () => {
+            const line = out.trim().split(/\r?\n/).filter(Boolean).pop() || '';
+            try { resolve(JSON.parse(line)); } catch { resolve({ ok: false, message: 'Unexpected response from the push command.' }); }
+        });
+    });
+}
+
+// Every 2 minutes, no overlapping runs (the command also holds a Cache::lock).
+function startPush() {
+    const tick = async () => {
+        if (pushRunning) return;
+        pushRunning = true;
+        try {
+            const r = await runPush(['--scheduled']);
+            if (!r.idle) console.log('[push]', r.message);
+        } finally {
+            pushRunning = false;
+        }
+    };
+    setTimeout(tick, 15000);
+    pushTimer = setInterval(tick, 60000); // the command itself enforces the configured interval
+}
+
+// Only the app's own page (loopback origin of this session) may talk to the main process.
+function trusted(event) {
+    const url = event.senderFrame && event.senderFrame.url;
+    return Boolean(appOrigin) && typeof url === 'string' && (url === appOrigin || url.startsWith(appOrigin + '/'));
+}
+
+function registerPushIpc() {
+    ipcMain.handle('sync:has-password', (e) => trusted(e) && fs.existsSync(pwFile()));
+
+    ipcMain.handle('sync:set-password', (e, password) => {
+        if (!trusted(e)) return { ok: false, message: 'Not allowed.' };
+        if (typeof password !== 'string' || password.length === 0 || password.length > 512) return { ok: false, message: 'Invalid password.' };
+        if (!safeStorage.isEncryptionAvailable()) return { ok: false, message: 'Secure storage is not available on this PC, so the password was not saved.' };
+        fs.writeFileSync(pwFile(), safeStorage.encryptString(password));
+        return { ok: true, message: 'Password saved securely.' };
+    });
+
+    ipcMain.handle('sync:clear-password', (e) => {
+        if (!trusted(e)) return { ok: false };
+        try { fs.rmSync(pwFile(), { force: true }); } catch { /* nothing to remove */ }
+        return { ok: true };
+    });
+
+    ipcMain.handle('sync:test', (e) => (trusted(e) ? runPush(['--test']) : { ok: false, message: 'Not allowed.' }));
+
+    ipcMain.handle('sync:push-now', async (e) => {
+        if (!trusted(e)) return { ok: false, message: 'Not allowed.' };
+        if (pushRunning) return { ok: false, message: 'A push is already running. Try again in a moment.' };
+        pushRunning = true;
+        try { return await runPush(['--force']); } finally { pushRunning = false; }
+    });
+
+    ipcMain.handle('sync:push-range', async (e, from, to) => {
+        if (!trusted(e)) return { ok: false, message: 'Not allowed.' };
+        const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+        if (!isDate(from) && !isDate(to)) return { ok: false, message: 'Pick a start or end date.' };
+        if ((from && !isDate(from)) || (to && !isDate(to))) return { ok: false, message: 'Invalid date.' };
+        if (pushRunning) return { ok: false, message: 'A push is already running. Try again in a moment.' };
+        pushRunning = true;
+        try {
+            const args = ['--force'];
+            if (from) args.push(`--from=${from}`);
+            if (to) args.push(`--to=${to}`);
+            return await runPush(args);
+        } finally { pushRunning = false; }
+    });
+}
+
 const ICON_PATH = path.join(__dirname, 'icon.png');
 const startHidden = process.argv.includes('--hidden');
 let win;
@@ -166,6 +270,17 @@ async function createWindow() {
         width: 1200, height: 800, title: 'Hier Sync Local', icon: ICON_PATH,
         autoHideMenuBar: true, backgroundColor: '#212735', show: false,
         maximizable: false, fullscreenable: false,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+        },
+    });
+    // The window may only show our own local page; anything else opens nowhere.
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    win.webContents.on('will-navigate', (e, url) => {
+        if (!url.startsWith('data:') && !(appOrigin && (url === appOrigin || url.startsWith(appOrigin + '/')))) e.preventDefault();
     });
     // Electron ignores the constructor option on some Windows setups, so enforce it explicitly.
     win.setMaximizable(false);
@@ -194,8 +309,11 @@ async function createWindow() {
 
     try {
         const port = await startLaravel();
-        await win.loadURL(`http://127.0.0.1:${port}/`);
+        appOrigin = `http://127.0.0.1:${port}`;
+        registerPushIpc();
+        await win.loadURL(`${appOrigin}/`);
         startAutoSync(findPhp());
+        startPush();
     } catch (e) {
         dialog.showErrorBox('Hier Sync Local failed to start', String(e.message || e));
         quitting = true;
@@ -221,7 +339,7 @@ function runSyncNow() {
 }
 
 function createTray() {
-    tray = new Tray(nativeImage.createFromPath(ICON_PATH).resize({ width: 16, height: 16 }));
+    tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'tray.png')).resize({ width: 16, height: 16 }));
     tray.setToolTip('Hier Sync Local');
     const menu = () => Menu.buildFromTemplate([
         { label: 'Open Hier Sync Local', click: showWindow },
@@ -253,4 +371,4 @@ if (!app.requestSingleInstanceLock()) {
 // Stay alive in the tray when every window is closed.
 app.on('window-all-closed', () => {});
 app.on('before-quit', () => { quitting = true; });
-app.on('quit', () => { clearInterval(autoSyncTimer); if (phpProc) phpProc.kill(); });
+app.on('quit', () => { clearInterval(autoSyncTimer); clearInterval(pushTimer); if (phpProc) phpProc.kill(); });
