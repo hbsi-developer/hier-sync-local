@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AttendanceLog;
 use App\Models\Setting;
+use App\Models\SyncLog;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -74,6 +75,14 @@ class LogPusher
     /** Calls the devices route to prove URL, credentials and server are fine. Changes no state. */
     public function test(): array
     {
+        $result = $this->runTest();
+        SyncLog::record('test', $result['ok'] ? 'success' : 'error', $result['message']);
+
+        return $result;
+    }
+
+    private function runTest(): array
+    {
         $config = $this->credentials();
         if (is_string($config)) {
             return ['ok' => false, 'message' => $config];
@@ -101,11 +110,15 @@ class LogPusher
     {
         $config = $this->credentials();
         if (is_string($config)) {
+            SyncLog::record('skipped', 'warning', $config, dedupe: true);
+
             return ['ok' => false, 'sent' => 0, 'message' => $config, 'skipped' => true];
         }
 
         $next = (int) Setting::get('push_next_attempt_at', 0);
         if (! $force && $next > time()) {
+            SyncLog::record('skipped', 'warning', 'Waiting before retry after a failed push.', dedupe: true);
+
             return ['ok' => false, 'sent' => 0, 'message' => 'Waiting before retry.', 'skipped' => true];
         }
         if ($scheduled && time() - (int) Setting::get('push_last_run_ts', 0) < $this->intervalMinutes() * 60 - 5) {
@@ -119,6 +132,7 @@ class LogPusher
         $sent = 0;
         $rejected = 0;
         $errors = [];
+        $rangeText = ($from || $to) ? ' for '.($from ?: 'the start').' to '.($to ?: 'today') : '';
 
         try {
             // The server takes one device per request, so send device by device.
@@ -126,13 +140,17 @@ class LogPusher
 
             foreach ($deviceIds as $deviceId) {
                 $cursor = null;
+                $devSent = 0;
+                $devModel = null;
+                $devStart = microtime(true);
                 while ($isRange || $batches < $cap) {
                     $rows = $this->queue($from, $to, $cursor)->where('device_id', $deviceId)->limit($this->batchSize())->get();
                     if ($rows->isEmpty()) {
                         break;
                     }
                     $batches++;
-                    $serial = (string) $rows->first()->device->serial_number;
+                    $devModel = $rows->first()->device;
+                    $serial = (string) $devModel->serial_number;
 
                     try {
                         $response = $this->post($config, $serial, $rows->map(fn (AttendanceLog $l) => [
@@ -155,11 +173,24 @@ class LogPusher
                     // The server confirmed the whole device batch.
                     AttendanceLog::whereIn('id', $rows->pluck('id'))->update(['sent_at' => now(), 'push_error' => null]);
                     $sent += $rows->count();
+                    $devSent += $rows->count();
                     $last = $rows->last();
                     $cursor = [$last->punched_at->format('Y-m-d H:i:s'), $last->id];
                 }
+
+                if ($devModel) {
+                    $ms = (int) round((microtime(true) - $devStart) * 1000);
+                    $devError = $errors[(string) $devModel->serial_number] ?? null;
+                    if ($devError) {
+                        SyncLog::record('push', 'error', $devError, $devModel, $devSent, $ms);
+                    } elseif ($devSent > 0) {
+                        SyncLog::record('push', 'success', "Sent {$devSent} record(s){$rangeText}.", $devModel, $devSent, $ms);
+                    }
+                }
             }
         } catch (\Throwable $e) {
+            SyncLog::record('push', 'error', $this->describe($e), null, $sent);
+
             return $this->fail($sent, $this->describe($e));
         }
 
@@ -169,7 +200,7 @@ class LogPusher
             return $this->fail($sent, Str::limit(($sent ? "Sent {$sent}, but " : '').$detail, 240, '…'));
         }
 
-        $range = ($from || $to) ? ' for '.($from ?: 'the start').' to '.($to ?: 'today') : '';
+        $range = $rangeText;
 
         if ($sent === 0 && $rejected === 0) {
             return ['ok' => true, 'sent' => 0, 'message' => "Nothing to send{$range}.", 'idle' => true];
@@ -261,6 +292,7 @@ class LogPusher
     private function get(array $config)
     {
         return Http::withBasicAuth($config['username'], $config['password'])
+            ->withUserAgent('HierSyncLocal/'.config('app.version'))
             ->acceptJson()
             ->timeout((int) config('sync.timeout'))
             ->connectTimeout((int) config('sync.connect_timeout'))
@@ -271,6 +303,7 @@ class LogPusher
     private function post(array $config, string $deviceSerial, array $logs)
     {
         return Http::withBasicAuth($config['username'], $config['password'])
+            ->withUserAgent('HierSyncLocal/'.config('app.version'))
             ->acceptJson()->asJson()
             ->timeout((int) config('sync.timeout'))
             ->connectTimeout((int) config('sync.connect_timeout'))

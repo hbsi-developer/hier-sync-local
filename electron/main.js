@@ -94,6 +94,7 @@ function laravelEnv(extra = {}) {
 
     return {
         ...process.env,
+        APP_VERSION: app.getVersion(),
         APP_ENV: packaged ? 'production' : 'local',
         APP_DEBUG: packaged ? 'false' : 'true',
         APP_KEY: fs.readFileSync(keyFile, 'utf8'),

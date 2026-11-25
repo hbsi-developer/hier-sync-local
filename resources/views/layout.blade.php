@@ -134,9 +134,10 @@
         <a href="{{ route('users.index') }}" class="{{ request()->routeIs('users.*') ? 'on' : '' }}"><x-icon name="users"/> Users</a>
         <a href="{{ route('attendance.index') }}" class="{{ request()->routeIs('attendance.*') ? 'on' : '' }}"><x-icon name="list"/> Attendance</a>
         <a href="{{ route('sync.index') }}" class="{{ request()->routeIs('sync.*') ? 'on' : '' }}"><x-icon name="sync"/> Payroll Sync</a>
+        <a href="{{ route('sync-logs.index') }}" class="{{ request()->routeIs('sync-logs.*') ? 'on' : '' }}"><x-icon name="file"/> Sync logs</a>
         <a href="{{ route('settings.index') }}" class="{{ request()->routeIs('settings.*') ? 'on' : '' }}"><x-icon name="cpu"/> Settings</a>
     </nav>
-    <small>ZKTeco SDK 6.3.1.37</small>
+    <small>v{{ config('app.version') }} · ZKTeco SDK 6.3.1.37</small>
 </aside>
 <main class="content">
     @if (isset($problem) && $problem)

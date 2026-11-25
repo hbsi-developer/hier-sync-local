@@ -18,6 +18,7 @@ class DeviceController extends Controller
     {
         return view('devices.index', [
             'devices' => Device::withCount(['logs', 'users'])->orderBy('name')->get(),
+            'lastPush' => \App\Models\SyncLog::where('type', 'push')->whereNotNull('device_id')->orderByDesc('id')->limit(200)->get()->unique('device_id')->keyBy('device_id'),
             'problem' => ZkemClient::environmentProblem(),
             'today' => AttendanceLog::where('punched_at', '>=', now()->startOfDay())->count(),
         ]);
@@ -79,20 +80,29 @@ class DeviceController extends Controller
 
     public function syncLogs(Device $device, LogSyncer $syncer): RedirectResponse
     {
-        try {
-            $new = $syncer->sync($device);
+        $message = $syncer->syncAndRecord($device);
 
-            return back()->with('ok', "Attendance synced: {$new} new record(s).");
-        } catch (\Throwable $e) {
-            return back()->with('error', $e->getMessage());
-        }
+        return $device->fresh()->last_sync_ok
+            ? back()->with('ok', "Attendance synced: {$message}.")
+            : back()->with('error', $message);
     }
 
     public function autoSyncSettings(Request $request): RedirectResponse
     {
         $data = $request->validate(['minutes' => 'required|integer|between:5,1440']);
-        Setting::put('auto_sync_enabled', $request->boolean('enabled') ? '1' : '0');
+        $changes = [];
+        $enabled = $request->boolean('enabled') ? '1' : '0';
+        if (Setting::get('auto_sync_enabled', '1') !== $enabled) {
+            $changes[] = 'device auto-sync '.($enabled === '1' ? 'turned on' : 'turned off');
+        }
+        if ((string) Setting::get('auto_sync_minutes', 30) !== (string) $data['minutes']) {
+            $changes[] = "device auto-sync interval set to {$data['minutes']} min";
+        }
+        Setting::put('auto_sync_enabled', $enabled);
         Setting::put('auto_sync_minutes', $data['minutes']);
+        if ($changes) {
+            \App\Models\SyncLog::record('settings', 'info', ucfirst(implode(', ', $changes)).'.');
+        }
 
         return back()->with('ok', 'Auto sync settings saved.');
     }
@@ -113,8 +123,10 @@ class DeviceController extends Controller
                 }
             });
 
+            \App\Models\SyncLog::record('pull_users', 'success', 'Pulled '.count($users).' user(s) from the device.', $device, count($users));
+
             return 'Users synced: '.count($users).' on device.';
-        }, $device);
+        }, $device, 'pull_users');
     }
 
     public function syncTime(Device $device): RedirectResponse
@@ -125,7 +137,7 @@ class DeviceController extends Controller
         );
     }
 
-    private function run(callable $action, Device $device): RedirectResponse
+    private function run(callable $action, Device $device, ?string $logType = null): RedirectResponse
     {
         try {
             $zk = (new ZkemClient($device->machine_number))->connect($device->ip, $device->port);
@@ -134,6 +146,10 @@ class DeviceController extends Controller
 
             return back()->with('ok', $message);
         } catch (\Throwable $e) {
+            if ($logType) {
+                \App\Models\SyncLog::record($logType, 'error', $e->getMessage(), $device);
+            }
+
             return back()->with('error', $e->getMessage());
         }
     }

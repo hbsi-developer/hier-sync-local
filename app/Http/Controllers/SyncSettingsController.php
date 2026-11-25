@@ -56,6 +56,24 @@ class SyncSettingsController extends Controller
             return back()->withInput()->withErrors(['url' => 'Enter a valid https:// website address.']);
         }
 
+        $changes = [];
+        if (Setting::get('push_url', '') !== $url) {
+            $changes[] = "website URL set to {$url}";
+        }
+        if (Setting::get('push_username', '') !== trim($data['username'])) {
+            $changes[] = 'username changed';
+        }
+        if ((string) Setting::get('push_interval', 2) !== (string) ($data['interval'] ?? 2)) {
+            $changes[] = 'push interval set to '.($data['interval'] ?? 2).' min';
+        }
+        $enabled = $request->boolean('enabled') ? '1' : '0';
+        if (Setting::get('push_enabled', '0') !== $enabled) {
+            $changes[] = 'push '.($enabled === '1' ? 'turned on' : 'turned off');
+        }
+        if ($changes) {
+            \App\Models\SyncLog::record('settings', 'info', ucfirst(implode(', ', $changes)).'.');
+        }
+
         Setting::put('push_url', $url);
         Setting::put('push_username', trim($data['username']));
         Setting::put('push_interval', (string) ($data['interval'] ?? 2));

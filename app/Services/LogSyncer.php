@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AttendanceLog;
 use App\Models\Device;
+use App\Models\SyncLog;
 use Illuminate\Support\Facades\DB;
 
 class LogSyncer
@@ -55,6 +56,8 @@ class LogSyncer
     /** sync() that records the outcome on the device instead of throwing. */
     public function syncAndRecord(Device $device): string
     {
+        $start = microtime(true);
+        $new = null;
         try {
             $new = $this->sync($device);
             $message = "{$new} new record(s)";
@@ -63,6 +66,8 @@ class LogSyncer
             $message = mb_strimwidth($e->getMessage(), 0, 240, '…');
             $ok = false;
         }
+
+        SyncLog::record('device_sync', $ok ? 'success' : 'error', $ok ? "Pulled {$message}." : $message, $device->fresh() ?? $device, $new, (int) round((microtime(true) - $start) * 1000));
 
         $device->update(['last_sync_attempt_at' => now(), 'last_sync_ok' => $ok, 'last_sync_message' => $message]);
 

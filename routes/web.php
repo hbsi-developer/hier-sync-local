@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\DeviceController;
+use App\Http\Controllers\SyncLogController;
 use App\Http\Controllers\SyncSettingsController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -30,6 +31,9 @@ Route::get('/settings', [SyncSettingsController::class, 'settings'])->name('sett
 Route::get('/payroll-sync', [SyncSettingsController::class, 'index'])->name('sync.index');
 Route::post('/payroll-sync', [SyncSettingsController::class, 'save'])->name('sync.save');
 Route::post('/payroll-sync/retry-rejected', [SyncSettingsController::class, 'retryRejected'])->name('sync.retry-rejected');
+
+Route::get('/sync-logs', [SyncLogController::class, 'index'])->name('sync-logs.index');
+Route::get('/sync-logs/export', [SyncLogController::class, 'export'])->name('sync-logs.export');
 
 Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance.index');
 Route::get('/attendance/export', [AttendanceController::class, 'export'])->name('attendance.export');

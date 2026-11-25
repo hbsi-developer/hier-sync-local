@@ -3,6 +3,14 @@
 return [
 
     /*
+    | App version. package.json is the single source of truth; the desktop shell passes it in
+    | APP_VERSION, and plain `artisan`/tests fall back to reading package.json directly.
+    */
+    'version' => env('APP_VERSION') ?: (is_file(base_path('package.json'))
+        ? (json_decode((string) file_get_contents(base_path('package.json')), true)['version'] ?? 'dev')
+        : 'dev'),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Name
     |--------------------------------------------------------------------------

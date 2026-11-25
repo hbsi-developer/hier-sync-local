@@ -214,6 +214,83 @@ class LogPushTest extends TestCase
         $this->get('/devices')->assertOk()->assertDontSee('Every (min. 5 minutes)');
     }
 
+    public function test_push_writes_a_log_line_per_device(): void
+    {
+        $good = $this->device('SN-GOOD');
+        $bad = $this->device('SN-BAD');
+        $this->log($good, '1', '2026-11-01 08:00:00');
+        $this->log($good, '2', '2026-11-01 08:01:00');
+        $this->log($bad, '3', '2026-11-01 08:02:00');
+        Http::fake([self::URL.'/*' => fn (Request $r) => $r['deviceSerial'] === 'SN-BAD'
+            ? Http::response(['message' => 'Unknown device.'], 404)
+            : Http::response(['success' => true])]);
+
+        app(LogPusher::class)->push();
+
+        $ok = \App\Models\SyncLog::where('type', 'push')->where('level', 'success')->first();
+        $this->assertSame('SN-GOOD', $ok->device_serial);
+        $this->assertSame(2, $ok->records);
+        $err = \App\Models\SyncLog::where('type', 'push')->where('level', 'error')->first();
+        $this->assertSame('SN-BAD', $err->device_serial);
+        $this->assertStringContainsString('Unknown device', $err->message);
+    }
+
+    public function test_connection_test_and_settings_changes_are_logged(): void
+    {
+        Http::fake([self::URL.'/*' => Http::response([], 401)]);
+        app(LogPusher::class)->test();
+        $this->assertSame('error', \App\Models\SyncLog::where('type', 'test')->value('level'));
+
+        $this->post('/payroll-sync', ['url' => 'https://pay.example.com', 'username' => 'sync-user', 'interval' => '7'])->assertSessionHasNoErrors();
+        $line = \App\Models\SyncLog::where('type', 'settings')->first();
+        $this->assertStringContainsString('push interval set to 7 min', $line->message);
+        $this->assertStringNotContainsString('s3cret', $line->message);
+    }
+
+    public function test_skipped_runs_are_logged_once_not_every_minute(): void
+    {
+        Setting::put('push_enabled', '0');
+        app(LogPusher::class)->push();
+        app(LogPusher::class)->push();
+
+        $this->assertSame(1, \App\Models\SyncLog::where('type', 'skipped')->count());
+    }
+
+    public function test_sync_logs_page_filters_and_exports(): void
+    {
+        $d = $this->device('SN-1');
+        \App\Models\SyncLog::record('push', 'success', 'Sent 3 record(s).', $d, 3, 120);
+        \App\Models\SyncLog::record('device_sync', 'error', 'Device 10.0.0.2:4370 is not reachable.', $d);
+
+        $this->get('/sync-logs')->assertOk()->assertSee('Sent 3 record(s).')->assertSee('is not reachable');
+        $this->get('/sync-logs?level=error')->assertOk()->assertSee('is not reachable')->assertDontSee('Sent 3 record(s).');
+        $csv = $this->get('/sync-logs/export?type=push');
+        $csv->assertOk();
+        $this->assertStringContainsString('Sent 3 record(s).', $csv->streamedContent());
+        $this->assertStringNotContainsString('not reachable', $csv->streamedContent());
+        $this->get('/devices')->assertOk()->assertSee('Sent 3 record(s)');
+    }
+
+    public function test_old_sync_logs_are_pruned(): void
+    {
+        $old = \App\Models\SyncLog::create(['type' => 'push', 'level' => 'info', 'message' => 'old', 'created_at' => now()->subDays(40)]);
+        \App\Models\SyncLog::record('push', 'info', 'new');
+
+        $this->assertNull(\App\Models\SyncLog::find($old->id));
+        $this->assertSame(1, \App\Models\SyncLog::count());
+    }
+
+    public function test_version_comes_from_package_json_and_is_shown_and_sent(): void
+    {
+        $version = json_decode(file_get_contents(base_path('package.json')), true)['version'];
+        $this->assertSame($version, config('app.version'));
+        $this->get('/settings')->assertSee('v'.$version);
+
+        Http::fake([self::URL.'/*' => Http::response(['success' => true])]);
+        app(LogPusher::class)->test();
+        Http::assertSent(fn (Request $r) => str_contains($r->header('User-Agent')[0] ?? '', 'HierSyncLocal/'.$version));
+    }
+
     public function test_interval_setting_is_saved(): void
     {
         $this->post('/payroll-sync', ['url' => 'https://pay.example.com', 'username' => 'u', 'interval' => '10'])->assertSessionHasNoErrors();
