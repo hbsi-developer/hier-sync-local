@@ -4,6 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Hier Sync Local</title>
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+    <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
     <style>
         /* Brand: HBSI Brand Guideline. Primary greens #15DD58 / #02BC4D / #2AF56D, accents #5583ED + #FFCC00, neutrals #212735 + #FFFFFF. Typeface: Montserrat. */
         @font-face { font-family:"Montserrat"; src:url("{{ asset('fonts/Montserrat.ttf') }}") format("truetype"); font-weight:100 900; font-style:normal; font-display:swap; }
@@ -24,6 +27,7 @@
             }
         }
         * { box-sizing:border-box; }
+        [hidden] { display:none !important; }
         body { margin:0; font:14px/1.55 "Montserrat", "Segoe UI", system-ui, sans-serif; font-weight:400; background:var(--bg); color:var(--text); display:flex; min-height:100vh; }
         a { color:inherit; text-decoration:none; }
 
@@ -31,6 +35,7 @@
         .side { width:230px; flex-shrink:0; background:var(--navy); color:#fff; border-right:1px solid var(--navy); padding:20px 14px; display:flex; flex-direction:column; gap:4px; position:sticky; top:0; height:100vh; }
         .brand { display:flex; align-items:center; gap:10px; padding:4px 10px 20px; font-weight:700; font-size:16px; }
         .brand i { width:32px; height:32px; border-radius:50%; background:var(--brand); color:var(--accent-text); display:grid; place-items:center; }
+        .nav { display:flex; flex-direction:column; gap:2px; }
         .nav a { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:10px; color:#c3cadb; font-weight:500; }
         .nav a:hover { background:rgba(255,255,255,.07); color:#fff; }
         .nav a.on { background:rgba(21,221,88,.16); color:var(--brand-bright); }
@@ -117,18 +122,19 @@
         dialog::backdrop { background:rgba(10,14,25,.55); backdrop-filter:blur(2px); }
         dialog form { padding:22px; display:grid; gap:14px; } dialog h2 { margin:0 0 2px; font-size:18px; }
         dialog .two { display:grid; grid-template-columns:1fr 1fr; gap:12px; } dialog .foot { display:flex; justify-content:flex-end; gap:10px; margin-top:6px; }
-        @media (max-width:860px) { body { flex-direction:column; } .side { width:100%; height:auto; position:static; flex-direction:row; align-items:center; } .brand { padding:0 10px; } .side small { display:none; } .content { padding:20px 16px; } .devices { grid-template-columns:1fr; } }
+        @media (max-width:860px) { body { flex-direction:column; } .side { width:100%; height:auto; position:static; flex-direction:row; align-items:center; } .side { flex-wrap:wrap; gap:6px 14px; padding:12px 14px; } .brand { padding:0 6px; } .brand img { height:40px !important; } .brand { width:100%; padding-bottom:0; } .nav { flex-direction:row; flex-wrap:nowrap; gap:4px; flex:1 1 100%; overflow-x:auto; } .nav a { padding:7px 8px; gap:6px; white-space:nowrap; font-size:12.5px; } .nav svg.i { width:16px; height:16px; } .side small { display:none; } .content { padding:20px 16px; } .devices { grid-template-columns:1fr; } .stats { grid-template-columns:repeat(3,1fr); gap:10px; } .stat { flex-direction:column; align-items:flex-start; gap:8px; padding:12px; } .stat b { font-size:18px; } }
     </style>
 </head>
 <body>
 
 <aside class="side">
-    <div class="brand"><i><x-icon name="clock"/></i> Hier Sync Local</div>
+    <div class="brand"><img src="/images/logo-horizontal-dark.svg" alt="Hier Payroll Sync" style="height:52px;width:auto;display:block;"></div>
     <nav class="nav">
         <a href="{{ route('devices.index') }}" class="{{ request()->routeIs('devices.*') ? 'on' : '' }}"><x-icon name="cpu"/> Devices</a>
         <a href="{{ route('users.index') }}" class="{{ request()->routeIs('users.*') ? 'on' : '' }}"><x-icon name="users"/> Users</a>
         <a href="{{ route('attendance.index') }}" class="{{ request()->routeIs('attendance.*') ? 'on' : '' }}"><x-icon name="list"/> Attendance</a>
         <a href="{{ route('sync.index') }}" class="{{ request()->routeIs('sync.*') ? 'on' : '' }}"><x-icon name="sync"/> Payroll Sync</a>
+        <a href="{{ route('settings.index') }}" class="{{ request()->routeIs('settings.*') ? 'on' : '' }}"><x-icon name="cpu"/> Settings</a>
     </nav>
     <small>ZKTeco SDK 6.3.1.37</small>
 </aside>

@@ -39,7 +39,7 @@ class LogPushTest extends TestCase
 
     private function ackAll(): \Closure
     {
-        return fn (Request $r) => Http::response(['accepted' => array_column($r['logs'], 'ref')]);
+        return fn (Request $r) => Http::response(['success' => true]);
     }
 
     public function test_sends_oldest_first_with_basic_auth_and_marks_sent(): void
@@ -54,11 +54,12 @@ class LogPushTest extends TestCase
         $this->assertTrue($r['ok']);
         $this->assertSame(2, $r['sent']);
         Http::assertSent(function (Request $req) use ($early, $late) {
-            return $req->url() === self::URL.'/api/hier-sync/attendance-logs'
+            return $req->url() === self::URL.'/api/sync-local/v1/logs'
                 && $req->hasHeader('Authorization', 'Basic '.base64_encode('sync-user:s3cret'))
-                && $req['installation_id'] === app(LogPusher::class)->installationId()
-                && array_column($req['logs'], 'ref') === [$early->id, $late->id]
-                && $req['logs'][0]['device_serial'] === 'SN-1'
+                && $req['deviceSerial'] === 'SN-1'
+                && array_column($req['logs'], 'enrollNumber') === ['1', '2']
+                && $req['logs'][0]['punchedAt'] === '2026-11-01 08:00:00'
+                && $req['logs'][0]['inOutMode'] === 0
                 && ! array_key_exists('company_id', $req->data());
         });
         $this->assertNotNull($early->fresh()->sent_at);
@@ -78,7 +79,7 @@ class LogPushTest extends TestCase
         Http::fake([self::URL.'/*' => function (Request $r) use (&$down) {
             return $down
                 ? Http::response(['message' => 'down'], 500)
-                : Http::response(['accepted' => array_column($r['logs'], 'ref')]);
+                : Http::response(['success' => true]);
         }]);
 
         $r = app(LogPusher::class)->push();
@@ -110,40 +111,24 @@ class LogPushTest extends TestCase
         $this->assertNull($row->fresh()->sent_at);
     }
 
-    public function test_only_confirmed_rows_are_marked_and_rejected_are_parked(): void
+    public function test_one_failing_device_does_not_block_the_others(): void
     {
-        $d = $this->device();
-        $a = $this->log($d, '1', '2026-11-01 08:00:00');
-        $b = $this->log($d, '2', '2026-11-01 08:01:00');
-        $c = $this->log($d, '3', '2026-11-01 08:02:00');
-        Http::fake([self::URL.'/*' => Http::sequence()
-            ->push(['accepted' => [$a->id], 'rejected' => [['ref' => $b->id, 'reason' => 'Unknown employee']]])
-            ->push(['accepted' => [$c->id]]), ]);
+        $good = $this->device('SN-GOOD');
+        $bad = $this->device('SN-BAD');
+        $a = $this->log($good, '1', '2026-11-01 08:00:00');
+        $b = $this->log($bad, '2', '2026-11-01 08:01:00');
+        Http::fake([self::URL.'/*' => fn (Request $r) => $r['deviceSerial'] === 'SN-BAD'
+            ? Http::response(['success' => false, 'message' => 'Unknown device.'], 404)
+            : Http::response(['success' => true])]);
 
         $r = app(LogPusher::class)->push();
 
-        $this->assertTrue($r['ok']);
+        $this->assertFalse($r['ok']);
+        $this->assertSame(1, $r['sent']);
+        $this->assertStringContainsString('SN-BAD', $r['message']);
+        $this->assertStringContainsString('Unknown device', $r['message']);
         $this->assertNotNull($a->fresh()->sent_at);
         $this->assertNull($b->fresh()->sent_at);
-        $this->assertSame('Unknown employee', $b->fresh()->push_error);
-        $this->assertNotNull($c->fresh()->sent_at);
-
-        $pusher = app(LogPusher::class);
-        $this->assertSame(0, $pusher->unsentCount());
-        $this->assertSame(1, $pusher->rejectedCount());
-        $this->assertSame(1, $pusher->retryRejected());
-        $this->assertSame(1, $pusher->unsentCount());
-    }
-
-    public function test_server_confirming_nothing_stops_instead_of_looping(): void
-    {
-        $d = $this->device();
-        $row = $this->log($d, '1', '2026-11-01 08:00:00');
-        Http::fake([self::URL.'/*' => Http::response(['accepted' => []])]);
-
-        $this->assertFalse(app(LogPusher::class)->push()['ok']);
-        $this->assertNull($row->fresh()->sent_at);
-        Http::assertSentCount(1);
     }
 
     public function test_batches_by_configured_size(): void
@@ -157,6 +142,89 @@ class LogPushTest extends TestCase
 
         $this->assertSame(5, app(LogPusher::class)->push()['sent']);
         Http::assertSentCount(3);
+    }
+
+    public function test_date_range_sends_only_logs_inside_it(): void
+    {
+        $d = $this->device();
+        $before = $this->log($d, '1', '2026-10-31 23:59:59');
+        $first = $this->log($d, '2', '2026-11-01 00:00:00');
+        $last = $this->log($d, '3', '2026-11-02 23:59:59');
+        $after = $this->log($d, '4', '2026-11-03 00:00:00');
+        Http::fake([self::URL.'/*' => $this->ackAll()]);
+
+        $r = app(LogPusher::class)->push(true, '2026-11-01', '2026-11-02');
+
+        $this->assertSame(2, $r['sent']);
+        $this->assertNull($before->fresh()->sent_at);
+        $this->assertNotNull($first->fresh()->sent_at);
+        $this->assertNotNull($last->fresh()->sent_at);
+        $this->assertNull($after->fresh()->sent_at);
+    }
+
+    public function test_date_range_resends_already_sent_logs_across_batches(): void
+    {
+        $d = $this->device();
+        $sent = $this->log($d, '1', '2026-11-01 08:00:00');
+        $sent->update(['sent_at' => now()->subDay()]);
+        $this->log($d, '2', '2026-11-01 09:00:00');
+        $this->log($d, '3', '2026-11-01 10:00:00');
+        config(['sync.batch_size' => 2]);
+        Http::fake([self::URL.'/*' => $this->ackAll()]);
+
+        $r = app(LogPusher::class)->push(true, '2026-11-01', '2026-11-01');
+
+        $this->assertSame(3, $r['sent']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_auto_push_resends_todays_logs_and_old_unsent_but_not_old_sent(): void
+    {
+        $d = $this->device();
+        $oldSent = $this->log($d, '1', '2026-11-01 08:00:00');
+        $oldSent->update(['sent_at' => now()->subDays(2)]);
+        $oldUnsent = $this->log($d, '2', '2026-11-01 09:00:00');
+        $todaySent = $this->log($d, '3', now()->format('Y-m-d').' 00:00:01');
+        $todaySent->update(['sent_at' => now()->subHour()]);
+        Http::fake([self::URL.'/*' => $this->ackAll()]);
+
+        $r = app(LogPusher::class)->push();
+
+        $this->assertSame(2, $r['sent']);
+        Http::assertSent(fn (Request $req) => array_column($req['logs'], 'enrollNumber') === ['2', '3']);
+    }
+
+    public function test_scheduled_run_waits_for_the_configured_interval(): void
+    {
+        $this->log($this->device(), '1', '2026-11-01 08:00:00');
+        Setting::put('push_interval', '5');
+        Http::fake([self::URL.'/*' => $this->ackAll()]);
+
+        $this->assertSame(1, app(LogPusher::class)->push(false, null, null, true)['sent']);
+        $this->assertTrue(app(LogPusher::class)->push(false, null, null, true)['skipped']);
+
+        Setting::put('push_last_run_ts', time() - 301);
+        $this->assertFalse(app(LogPusher::class)->push(false, null, null, true)['skipped'] ?? false);
+    }
+
+    public function test_settings_page_and_payroll_sync_page_render(): void
+    {
+        $this->get('/settings')->assertOk()->assertSee('Save settings')->assertSee('Device auto-sync')->assertSee('Test connection');
+        $this->get('/payroll-sync')->assertOk()->assertSee('Push by date range')->assertDontSee('Save settings');
+        $this->get('/devices')->assertOk()->assertDontSee('Every (min. 5 minutes)');
+    }
+
+    public function test_interval_setting_is_saved(): void
+    {
+        $this->post('/payroll-sync', ['url' => 'https://pay.example.com', 'username' => 'u', 'interval' => '10'])->assertSessionHasNoErrors();
+        $this->assertSame(10, app(LogPusher::class)->intervalMinutes());
+        $this->post('/payroll-sync', ['url' => 'https://pay.example.com', 'username' => 'u', 'interval' => '0'])->assertSessionHasErrors('interval');
+    }
+
+    public function test_command_rejects_bad_dates(): void
+    {
+        $this->artisan('logs:push', ['--from' => 'nope', '--json' => true])->assertFailed();
+        $this->artisan('logs:push', ['--from' => '2026-11-05', '--to' => '2026-11-01', '--json' => true])->assertFailed();
     }
 
     public function test_devices_without_serial_are_not_sent(): void
@@ -203,11 +271,11 @@ class LogPushTest extends TestCase
         $row = $this->log($this->device(), '1', '2026-11-01 08:00:00');
         $good = true;
         Http::fake([self::URL.'/*' => function () use (&$good) {
-            return $good ? Http::response(['accepted' => []]) : Http::response([], 401);
+            return $good ? Http::response(['status' => 'ok']) : Http::response([], 401);
         }]);
 
         $this->assertTrue(app(LogPusher::class)->test()['ok']);
-        Http::assertSent(fn (Request $r) => $r['logs'] === []);
+        Http::assertSent(fn (Request $r) => $r->method() === 'GET' && $r->url() === self::URL.'/api/sync-local/v1/devices');
         $this->assertNull($row->fresh()->sent_at);
 
         $good = false;

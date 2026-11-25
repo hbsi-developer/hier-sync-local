@@ -187,14 +187,14 @@ function startPush() {
         if (pushRunning) return;
         pushRunning = true;
         try {
-            const r = await runPush([]);
+            const r = await runPush(['--scheduled']);
             if (!r.idle) console.log('[push]', r.message);
         } finally {
             pushRunning = false;
         }
     };
     setTimeout(tick, 15000);
-    pushTimer = setInterval(tick, 120000);
+    pushTimer = setInterval(tick, 60000); // the command itself enforces the configured interval
 }
 
 // Only the app's own page (loopback origin of this session) may talk to the main process.
@@ -227,6 +227,21 @@ function registerPushIpc() {
         if (pushRunning) return { ok: false, message: 'A push is already running. Try again in a moment.' };
         pushRunning = true;
         try { return await runPush(['--force']); } finally { pushRunning = false; }
+    });
+
+    ipcMain.handle('sync:push-range', async (e, from, to) => {
+        if (!trusted(e)) return { ok: false, message: 'Not allowed.' };
+        const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+        if (!isDate(from) && !isDate(to)) return { ok: false, message: 'Pick a start or end date.' };
+        if ((from && !isDate(from)) || (to && !isDate(to))) return { ok: false, message: 'Invalid date.' };
+        if (pushRunning) return { ok: false, message: 'A push is already running. Try again in a moment.' };
+        pushRunning = true;
+        try {
+            const args = ['--force'];
+            if (from) args.push(`--from=${from}`);
+            if (to) args.push(`--to=${to}`);
+            return await runPush(args);
+        } finally { pushRunning = false; }
     });
 }
 
@@ -323,7 +338,7 @@ function runSyncNow() {
 }
 
 function createTray() {
-    tray = new Tray(nativeImage.createFromPath(ICON_PATH).resize({ width: 16, height: 16 }));
+    tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'tray.png')).resize({ width: 16, height: 16 }));
     tray.setToolTip('Hier Sync Local');
     const menu = () => Menu.buildFromTemplate([
         { label: 'Open Hier Sync Local', click: showWindow },

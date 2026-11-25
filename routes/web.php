@@ -26,6 +26,7 @@ Route::post('/sdk/register', [DeviceController::class, 'registerSdk'])->name('sd
 Route::get('/users', [UserController::class, 'index'])->name('users.index');
 Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
 
+Route::get('/settings', [SyncSettingsController::class, 'settings'])->name('settings.index');
 Route::get('/payroll-sync', [SyncSettingsController::class, 'index'])->name('sync.index');
 Route::post('/payroll-sync', [SyncSettingsController::class, 'save'])->name('sync.save');
 Route::post('/payroll-sync/retry-rejected', [SyncSettingsController::class, 'retryRejected'])->name('sync.retry-rejected');

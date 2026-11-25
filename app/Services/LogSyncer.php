@@ -12,6 +12,18 @@ class LogSyncer
     public function sync(Device $device): int
     {
         $zk = (new ZkemClient($device->machine_number))->connect($device->ip, $device->port);
+
+        // The push to Hier Payroll identifies logs by device serial, so every device needs one.
+        // Fetch it here instead of relying on someone pressing "Test"; a failure must not block the sync.
+        if (! $device->serial_number) {
+            try {
+                if ($sn = $zk->serialNumber()) {
+                    $device->update(['serial_number' => $sn]);
+                }
+            } catch (\Throwable) {
+            }
+        }
+
         $rows = $zk->attendance();
         $zk->disconnect();
 

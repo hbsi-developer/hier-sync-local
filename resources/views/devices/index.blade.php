@@ -16,18 +16,6 @@
     <div class="card stat"><div class="ic"><x-icon name="clock"/></div><div><b>{{ number_format($today) }}</b><span>Punches today</span></div></div>
 </div>
 
-<div class="card" style="margin-bottom:18px">
-    <form method="post" action="{{ route('auto-sync.settings') }}" class="row" style="align-items:center">
-        @csrf
-        <label class="switch" title="Auto sync"><input type="checkbox" name="enabled" value="1" @checked($autoEnabled)><span></span></label>
-        <div style="flex:1; min-width:220px"><b>Auto sync</b><div class="muted">Pulls new logs in the background while the app is open.</div></div>
-        <label class="f" style="flex:0 0 150px">Every (min. 30 minutes)
-            <input name="minutes" type="number" min="30" max="1440" value="{{ $autoMinutes }}">
-        </label>
-        <button><x-icon name="sync"/> Save</button>
-    </form>
-</div>
-
 @if ($devices->isEmpty())
     <div class="card empty">
         <div class="ic"><x-icon name="cpu"/></div>

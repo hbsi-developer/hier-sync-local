@@ -39,8 +39,8 @@ return [
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
             'busy_timeout' => 15000,
-            'journal_mode' => null,
-            'synchronous' => null,
+            'journal_mode' => 'WAL', // readers (the UI) are not blocked by the background sync/push writers
+            'synchronous' => 'NORMAL',
             'transaction_mode' => 'DEFERRED',
         ],
 

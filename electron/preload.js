@@ -9,4 +9,5 @@ contextBridge.exposeInMainWorld('hierSync', {
     clearPassword: () => ipcRenderer.invoke('sync:clear-password'),
     testConnection: () => ipcRenderer.invoke('sync:test'),
     pushNow: () => ipcRenderer.invoke('sync:push-now'),
+    pushRange: (from, to) => ipcRenderer.invoke('sync:push-range', String(from || ''), String(to || '')),
 });

@@ -26,6 +26,7 @@
         ],
         "win": {
             "target": "nsis",
+            "icon": "electron/icon.png",
             "signAndEditExecutable": false,
             "requestedExecutionLevel": "asInvoker"
         },

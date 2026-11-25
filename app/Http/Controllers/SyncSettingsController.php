@@ -17,6 +17,7 @@ class SyncSettingsController extends Controller
             'enabled' => Setting::get('push_enabled', '0') === '1',
             'url' => Setting::get('push_url', ''),
             'username' => Setting::get('push_username', ''),
+            'interval' => $pusher->intervalMinutes(),
             'lastAt' => Setting::get('push_last_at'),
             'lastOk' => Setting::get('push_last_ok'),
             'lastMessage' => Setting::get('push_last_message'),
@@ -25,6 +26,20 @@ class SyncSettingsController extends Controller
             'rejected' => $pusher->rejectedCount(),
             'noSerial' => $pusher->waitingForSerialCount(),
             'httpAllowed' => app()->environment('local'),
+            'configured' => Setting::get('push_enabled', '0') === '1' && Setting::get('push_url', '') !== '' && Setting::get('push_username', '') !== '',
+        ]);
+    }
+
+    public function settings(LogPusher $pusher): View
+    {
+        return view('settings.index', [
+            'enabled' => Setting::get('push_enabled', '0') === '1',
+            'url' => Setting::get('push_url', ''),
+            'username' => Setting::get('push_username', ''),
+            'interval' => $pusher->intervalMinutes(),
+            'httpAllowed' => app()->environment('local'),
+            'autoEnabled' => Setting::get('auto_sync_enabled', '1') === '1',
+            'autoMinutes' => max(5, (int) Setting::get('auto_sync_minutes', 30)),
         ]);
     }
 
@@ -33,6 +48,7 @@ class SyncSettingsController extends Controller
         $data = $request->validate([
             'url' => ['required', 'string', 'max:255'],
             'username' => ['required', 'string', 'max:255'],
+            'interval' => ['nullable', 'integer', 'min:1', 'max:60'],
         ]);
 
         $url = LogPusher::normalizeUrl($data['url']);
@@ -42,6 +58,7 @@ class SyncSettingsController extends Controller
 
         Setting::put('push_url', $url);
         Setting::put('push_username', trim($data['username']));
+        Setting::put('push_interval', (string) ($data['interval'] ?? 2));
         Setting::put('push_enabled', $request->boolean('enabled') ? '1' : '0');
         // A changed target deserves an immediate retry instead of waiting out an old backoff.
         Setting::put('push_failures', 0);

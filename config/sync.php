@@ -17,5 +17,8 @@ return [
 
     'connect_timeout' => 10,
 
-    'path' => '/api/hier-sync/attendance-logs',
+    'path' => '/api/sync-local/v1/logs',
+
+    // GET, read-only: used by Test connection (the status route is POST and needs a device).
+    'status_path' => '/api/sync-local/v1/devices',
 ];

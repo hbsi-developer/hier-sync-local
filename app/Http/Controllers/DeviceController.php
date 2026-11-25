@@ -20,8 +20,6 @@ class DeviceController extends Controller
             'devices' => Device::withCount(['logs', 'users'])->orderBy('name')->get(),
             'problem' => ZkemClient::environmentProblem(),
             'today' => AttendanceLog::where('punched_at', '>=', now()->startOfDay())->count(),
-            'autoEnabled' => Setting::get('auto_sync_enabled', '1') === '1',
-            'autoMinutes' => max(30, (int) Setting::get('auto_sync_minutes', 30)),
         ]);
     }
 
@@ -60,7 +58,7 @@ class DeviceController extends Controller
     /** Quick reachability probe, polled by the Devices page to show Connected: Yes/No. */
     public function status(Device $device): \Illuminate\Http\JsonResponse
     {
-        $probe = @fsockopen($device->ip, $device->port, $errno, $errstr, 2);
+        $probe = @fsockopen($device->ip, $device->port, $errno, $errstr, 1);
         if ($probe) {
             fclose($probe);
         }
@@ -92,7 +90,7 @@ class DeviceController extends Controller
 
     public function autoSyncSettings(Request $request): RedirectResponse
     {
-        $data = $request->validate(['minutes' => 'required|integer|between:30,1440']);
+        $data = $request->validate(['minutes' => 'required|integer|between:5,1440']);
         Setting::put('auto_sync_enabled', $request->boolean('enabled') ? '1' : '0');
         Setting::put('auto_sync_minutes', $data['minutes']);
 

@@ -1,10 +1,18 @@
 @extends('layout')
 
 @section('content')
+<style>
+    .card h2 { margin:0 0 2px; font-size:16px; }
+    .card .hint { color:var(--muted); font-size:13px; margin-bottom:14px; }
+    .range { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; gap:12px; align-items:end; }
+    input[type=date] { min-height:40px; }
+    @media (max-width:560px) { .range { grid-template-columns:1fr; } .range button { justify-content:center; } }
+</style>
+
 <div class="head">
     <div>
         <h1>Payroll Sync</h1>
-        <div class="sub">Sends attendance logs to Hier Payroll automatically every 2 minutes.</div>
+        <div class="sub">Sends today's attendance logs (and any unsent older ones) to Hier Payroll automatically every {{ $interval }} minute(s).</div>
     </div>
 </div>
 
@@ -20,6 +28,9 @@
     </div>
 </div>
 
+@unless ($configured)
+    <div class="banner"><span>Push to Hier Payroll is not set up yet. Add the website URL and credentials in Settings, then turn it on.</span><a class="btn sm" href="{{ route('settings.index') }}">Open Settings</a></div>
+@endunless
 @if ($lastMessage)
     <div class="card" style="margin-bottom:18px"><b>Last result:</b> {{ $lastMessage }}
         @if ($lastOk === '0' && $nextAttempt > time()) <div class="muted">Next retry after {{ \Illuminate\Support\Carbon::createFromTimestamp($nextAttempt)->diffForHumans() }}. No record is lost; they stay queued in order.</div> @endif
@@ -35,44 +46,16 @@
     </div>
 @endif
 
-<div class="card" style="margin-bottom:18px">
-    <form method="post" action="{{ route('sync.save') }}" style="display:grid; gap:14px">
-        @csrf
-        <div class="row" style="align-items:center">
-            <label class="switch" title="Push enabled"><input type="checkbox" name="enabled" value="1" @checked(old('enabled', $enabled))><span></span></label>
-            <div style="flex:1"><b>Push to Hier Payroll</b><div class="muted">When on, unsent logs are sent every 2 minutes while the app is running.</div></div>
-        </div>
-        <div class="row">
-            <label class="f" style="flex:2">Website URL
-                <input name="url" type="{{ $httpAllowed ? 'text' : 'url' }}" value="{{ old('url', $url) }}" placeholder="https://your-company.hierpayroll.com" required>
-            </label>
-            <label class="f">Username
-                <input name="username" value="{{ old('username', $username) }}" autocomplete="off" required>
-            </label>
-        </div>
-        <div><button class="primary"><x-icon name="sync"/> Save</button></div>
-    </form>
-</div>
-
-<div class="card" id="pw-card">
-    <b>Password</b>
-    <div class="muted" style="margin-bottom:12px">Stored encrypted on this PC only (Windows protected storage). It is never saved in the database or the logs.</div>
-    <div id="pw-unavailable" class="muted" hidden>Open this page in the Hier Sync Local desktop app to set the password.</div>
-    <div id="pw-ui">
-        <div class="row">
-            <label class="f" style="flex:2">New password
-                <input id="pw" type="password" autocomplete="new-password" placeholder="••••••••">
-            </label>
-            <span id="pw-state" class="pill"></span>
-            <button type="button" class="primary" id="pw-save">Save password</button>
-            <button type="button" class="danger" id="pw-clear">Remove</button>
-        </div>
-        <div class="row" style="margin-top:16px">
-            <button type="button" id="btn-test"><x-icon name="plug"/> Test connection</button>
-            <button type="button" id="btn-push"><x-icon name="sync"/> Push now</button>
-            <span class="muted" id="act-msg"></span>
-        </div>
+<div class="card" id="push-card">
+    <h2>Push by date range</h2>
+    <div class="hint">Sends all logs punched between these dates (inclusive), including ones already sent. Leave one empty for no limit.</div>
+    <div id="range-unavailable" class="muted" hidden>Open this page in the Hier Sync Local desktop app to push logs.</div>
+    <div class="range" id="range-ui">
+        <label class="f">From <input id="range-from" type="date"></label>
+        <label class="f">To <input id="range-to" type="date"></label>
+        <button type="button" class="primary" id="btn-range"><x-icon name="sync"/> Push range</button>
     </div>
+    <div class="muted" id="act-msg" style="margin-top:10px"></div>
 </div>
 
 <script>
@@ -86,45 +69,26 @@
         $('toasts').appendChild(t);
         setTimeout(() => t.remove(), ok ? 5000 : 12000);
     };
-    if (!api) { $('pw-ui').hidden = true; $('pw-unavailable').hidden = false; return; }
+    if (!api) { $('range-ui').hidden = true; $('range-unavailable').hidden = false; return; }
 
-    const refresh = async () => {
-        const has = await api.hasPassword();
-        const s = $('pw-state');
-        s.className = 'pill ' + (has ? 'good' : 'warn');
-        s.textContent = has ? 'Password saved' : 'No password';
-    };
-    const run = async (btn, fn) => {
+    $('btn-range').onclick = async (e) => {
+        const btn = e.currentTarget;
+        const from = $('range-from').value, to = $('range-to').value;
+        if (!from && !to) return toast('Pick a start or end date.', false);
+        if (from && to && from > to) return toast('The start date is after the end date.', false);
         btn.disabled = true;
-        try { await fn(); } catch (e) { toast(e.message || String(e), false); } finally { btn.disabled = false; }
-    };
-
-    $('pw-save').onclick = (e) => run(e.currentTarget, async () => {
-        const v = $('pw').value;
-        if (!v) return toast('Type the password first.', false);
-        const r = await api.setPassword(v);
-        $('pw').value = '';
-        toast(r.message, r.ok);
-        await refresh();
-    });
-    $('pw-clear').onclick = (e) => run(e.currentTarget, async () => {
-        await api.clearPassword();
-        toast('Password removed.', true);
-        await refresh();
-    });
-    $('btn-test').onclick = (e) => run(e.currentTarget, async () => {
-        $('act-msg').textContent = 'Testing…';
-        const r = await api.testConnection();
-        $('act-msg').textContent = '';
-        toast(r.message, r.ok);
-    });
-    $('btn-push').onclick = (e) => run(e.currentTarget, async () => {
         $('act-msg').textContent = 'Sending…';
-        const r = await api.pushNow();
-        toast(r.message, r.ok);
-        setTimeout(() => location.reload(), 800);
-    });
-    refresh();
+        try {
+            const r = await api.pushRange(from, to);
+            toast(r.message, r.ok);
+            setTimeout(() => location.reload(), 800);
+        } catch (err) {
+            toast(err.message || String(err), false);
+        } finally {
+            btn.disabled = false;
+            $('act-msg').textContent = '';
+        }
+    };
 })();
 </script>
 @endsection

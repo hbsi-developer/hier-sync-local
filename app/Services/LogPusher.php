@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 /**
  * Pushes unsent attendance logs to Hier Payroll, oldest first, in batches.
  *
- * Contract (POST {url}{sync.path}, HTTP Basic Auth, JSON):
+ * Contract (POST {url}{sync.path}; connection check: GET {url}{sync.status_path}, HTTP Basic Auth, JSON):
  *   request : { installation_id, logs: [ { ref, device_serial, enroll_number, punched_at,
  *               verify_mode, in_out_mode, work_code } ] }          (punched_at = device local time, Y-m-d H:i:s)
  *   response: { accepted: [ref, ...], rejected: [ { ref, reason } ] }   (2xx)
@@ -71,7 +71,7 @@ class LogPusher
         return $url;
     }
 
-    /** Sends an empty batch to prove URL, credentials and server are fine. Changes no state. */
+    /** Calls the devices route to prove URL, credentials and server are fine. Changes no state. */
     public function test(): array
     {
         $config = $this->credentials();
@@ -80,20 +80,24 @@ class LogPusher
         }
 
         try {
-            $response = $this->post($config, []);
+            $response = $this->get($config);
         } catch (\Throwable $e) {
             return ['ok' => false, 'message' => $this->describe($e)];
         }
 
-        if ($response->successful() && is_array($response->json('accepted'))) {
+        if ($response->successful()) {
             return ['ok' => true, 'message' => 'Connection OK. Credentials accepted.'];
         }
 
         return ['ok' => false, 'message' => $this->failureMessage($response)];
     }
 
-    /** Runs until the queue is empty, a batch fails, or the per-run cap is hit. Never throws. */
-    public function push(bool $force = false): array
+    /**
+     * Auto run (no dates): every unsent log, plus every log of today (resent each interval).
+     * Range run ($from/$to): every log in that range, already sent or not.
+     * Runs until nothing is left, a batch fails, or the per-run cap is hit. Never throws.
+     */
+    public function push(bool $force = false, ?string $from = null, ?string $to = null, bool $scheduled = false): array
     {
         $config = $this->credentials();
         if (is_string($config)) {
@@ -104,59 +108,74 @@ class LogPusher
         if (! $force && $next > time()) {
             return ['ok' => false, 'sent' => 0, 'message' => 'Waiting before retry.', 'skipped' => true];
         }
+        if ($scheduled && time() - (int) Setting::get('push_last_run_ts', 0) < $this->intervalMinutes() * 60 - 5) {
+            return ['ok' => true, 'sent' => 0, 'message' => 'Not due yet.', 'skipped' => true, 'idle' => true];
+        }
+        Setting::put('push_last_run_ts', time());
 
+        $isRange = (bool) ($from || $to);
+        $cap = (int) config('sync.max_batches_per_run');
+        $batches = 0;
         $sent = 0;
         $rejected = 0;
+        $errors = [];
 
         try {
-            for ($i = 0; $i < (int) config('sync.max_batches_per_run'); $i++) {
-                $rows = $this->queue()->limit($this->batchSize())->get();
-                if ($rows->isEmpty()) {
-                    break;
-                }
+            // The server takes one device per request, so send device by device.
+            $deviceIds = $this->queue($from, $to)->reorder()->distinct()->pluck('device_id');
 
-                $response = $this->post($config, $rows->map(fn (AttendanceLog $l) => [
-                    'ref' => $l->id,
-                    'device_serial' => $l->device->serial_number,
-                    'enroll_number' => $l->enroll_number,
-                    'punched_at' => $l->punched_at->format('Y-m-d H:i:s'),
-                    'verify_mode' => $l->verify_mode,
-                    'in_out_mode' => $l->in_out_mode,
-                    'work_code' => $l->work_code,
-                ])->all());
+            foreach ($deviceIds as $deviceId) {
+                $cursor = null;
+                while ($isRange || $batches < $cap) {
+                    $rows = $this->queue($from, $to, $cursor)->where('device_id', $deviceId)->limit($this->batchSize())->get();
+                    if ($rows->isEmpty()) {
+                        break;
+                    }
+                    $batches++;
+                    $serial = (string) $rows->first()->device->serial_number;
 
-                if (! $response->successful() || ! is_array($response->json('accepted'))) {
-                    throw new \RuntimeException($this->failureMessage($response));
-                }
+                    try {
+                        $response = $this->post($config, $serial, $rows->map(fn (AttendanceLog $l) => [
+                            'enrollNumber' => (string) $l->enroll_number,
+                            'punchedAt' => $l->punched_at->format('Y-m-d H:i:s'),
+                            'inOutMode' => (int) $l->in_out_mode,
+                            'verifyMode' => $l->verify_mode,
+                            'workCode' => $l->work_code,
+                        ])->all());
+                    } catch (\Throwable $e) {
+                        $errors[$serial] = $this->describe($e);
+                        break;
+                    }
 
-                $ids = $rows->pluck('id')->all();
-                $accepted = array_values(array_intersect($ids, array_map('intval', $response->json('accepted'))));
-                $reject = collect($response->json('rejected') ?? [])
-                    ->filter(fn ($r) => is_array($r) && in_array((int) ($r['ref'] ?? 0), $ids, true))
-                    ->mapWithKeys(fn ($r) => [(int) $r['ref'] => Str::limit((string) ($r['reason'] ?? 'Rejected'), 200, '…')]);
+                    if (! $response->successful() || $response->json('success') === false) {
+                        $errors[$serial] = $this->failureMessage($response);
+                        break;
+                    }
 
-                // Mark only what the server confirmed.
-                AttendanceLog::whereIn('id', $accepted)->update(['sent_at' => now(), 'push_error' => null]);
-                foreach ($reject->except($accepted) as $id => $reason) {
-                    AttendanceLog::whereKey($id)->update(['push_error' => $reason]);
-                }
-                $sent += count($accepted);
-                $rejected += $reject->except($accepted)->count();
-
-                if (count($accepted) + $reject->except($accepted)->count() === 0) {
-                    // No progress: stop instead of resending the same batch forever.
-                    throw new \RuntimeException('Server did not confirm any record of the batch.');
+                    // The server confirmed the whole device batch.
+                    AttendanceLog::whereIn('id', $rows->pluck('id'))->update(['sent_at' => now(), 'push_error' => null]);
+                    $sent += $rows->count();
+                    $last = $rows->last();
+                    $cursor = [$last->punched_at->format('Y-m-d H:i:s'), $last->id];
                 }
             }
         } catch (\Throwable $e) {
             return $this->fail($sent, $this->describe($e));
         }
 
-        if ($sent === 0 && $rejected === 0) {
-            return ['ok' => true, 'sent' => 0, 'message' => 'Nothing to send.', 'idle' => true];
+        if ($errors) {
+            $detail = collect($errors)->map(fn ($m, $serial) => "{$serial}: {$m}")->implode(' | ');
+
+            return $this->fail($sent, Str::limit(($sent ? "Sent {$sent}, but " : '').$detail, 240, '…'));
         }
 
-        $message = "Sent {$sent} record(s)".($rejected ? ", {$rejected} rejected by the server" : '').'.';
+        $range = ($from || $to) ? ' for '.($from ?: 'the start').' to '.($to ?: 'today') : '';
+
+        if ($sent === 0 && $rejected === 0) {
+            return ['ok' => true, 'sent' => 0, 'message' => "Nothing to send{$range}.", 'idle' => true];
+        }
+
+        $message = "Sent {$sent} record(s){$range}".($rejected ? ", {$rejected} rejected by the server" : '').'.';
         Setting::put('push_failures', 0);
         Setting::put('push_next_attempt_at', 0);
         $this->record(true, $message);
@@ -182,12 +201,37 @@ class LogPusher
         Setting::put('push_last_message', Str::limit($message, 240, '…'));
     }
 
-    private function queue(): Builder
+    /**
+     * @param  string|null  $from  Y-m-d, inclusive (device local date)
+     * @param  string|null  $to  Y-m-d, inclusive
+     * @param  array{0:string,1:int}|null  $cursor  [punched_at, id] of the last row already handled in this run
+     */
+    private function queue(?string $from = null, ?string $to = null, ?array $cursor = null): Builder
     {
-        return AttendanceLog::with('device')
-            ->whereNull('sent_at')->whereNull('push_error')
-            ->whereHas('device', fn (Builder $q) => $q->whereNotNull('serial_number')->where('serial_number', '!=', ''))
-            ->orderBy('punched_at')->orderBy('id');
+        $q = AttendanceLog::with('device')
+            ->whereHas('device', fn (Builder $d) => $d->whereNotNull('serial_number')->where('serial_number', '!=', ''));
+
+        if ($from || $to) {
+            $q->when($from, fn (Builder $b) => $b->where('punched_at', '>=', $from.' 00:00:00'))
+                ->when($to, fn (Builder $b) => $b->where('punched_at', '<=', $to.' 23:59:59'));
+        } else {
+            $q->where(fn (Builder $w) => $w
+                ->where(fn (Builder $u) => $u->whereNull('sent_at')->whereNull('push_error'))
+                ->orWhere('punched_at', '>=', now()->toDateString().' 00:00:00'));
+        }
+
+        if ($cursor) {
+            $q->where(fn (Builder $w) => $w
+                ->where('punched_at', '>', $cursor[0])
+                ->orWhere(fn (Builder $x) => $x->where('punched_at', $cursor[0])->where('id', '>', $cursor[1])));
+        }
+
+        return $q->orderBy('punched_at')->orderBy('id');
+    }
+
+    public function intervalMinutes(): int
+    {
+        return max(1, min(60, (int) Setting::get('push_interval', 2)));
     }
 
     private function batchSize(): int
@@ -214,7 +258,17 @@ class LogPusher
         return ['url' => $url, 'username' => $username, 'password' => $password];
     }
 
-    private function post(array $config, array $logs)
+    private function get(array $config)
+    {
+        return Http::withBasicAuth($config['username'], $config['password'])
+            ->acceptJson()
+            ->timeout((int) config('sync.timeout'))
+            ->connectTimeout((int) config('sync.connect_timeout'))
+            ->withoutRedirecting()
+            ->get($config['url'].config('sync.status_path'));
+    }
+
+    private function post(array $config, string $deviceSerial, array $logs)
     {
         return Http::withBasicAuth($config['username'], $config['password'])
             ->acceptJson()->asJson()
@@ -222,7 +276,7 @@ class LogPusher
             ->connectTimeout((int) config('sync.connect_timeout'))
             ->withoutRedirecting() // never replay credentials to a redirect target
             ->post($config['url'].config('sync.path'), [
-                'installation_id' => $this->installationId(),
+                'deviceSerial' => $deviceSerial,
                 'logs' => $logs,
             ]);
     }
