@@ -24,4 +24,5 @@
 
 **Versioning**
 - `package.json` is the only place the version is set. Add notes under `## [Unreleased]` in `CHANGELOG.md`; use
-  `npm run release:patch|minor|major` to release.
+  `npm run release:patch|minor|major` to release. **Every version bump is followed by `npm run dist`** to build
+  `dist\Hier-Sync-Local-Setup-<version>.exe`; confirm the file exists and report it. Never commit `dist\`.

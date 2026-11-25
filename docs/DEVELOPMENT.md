@@ -39,7 +39,8 @@ npm run release:minor   # features     1.0.0 -> 1.1.0
 npm run release:major   # breaking     1.0.0 -> 2.0.0
 ```
 Each release script bumps `package.json`, moves the Unreleased notes under the new version in `CHANGELOG.md`,
-commits, and tags `vX.Y.Z`. It requires a clean git tree. Push the commit and tag yourself.
+commits, and tags `vX.Y.Z`. It requires a clean git tree. **After every version bump, build the installer with
+`npm run dist`** (the `/release` command does this for you). Push the commit and tag yourself.
 
 ## Build the installer
 1. Put a PHP 8.4 x64 build with the required extensions in `php\` (see `README-DESKTOP.md`), or let
