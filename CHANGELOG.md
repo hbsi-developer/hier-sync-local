@@ -17,6 +17,13 @@ Then `npm run dist` builds the installer with the same version in its name.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-26
+
+### Fixed
+- The installer and app executable now carry the Hier Sync icon. electron-builder skipped icon editing because
+  `signAndEditExecutable` is off, so an `afterPack` hook (`build/after-pack.js`) applies `build/icon.ico` with the new
+  `rcedit` dev dependency.
+
 ## [1.1.0] - 2026-11-25
 
 Everything since 1.0.0: Settings and Sync logs pages, per-device push to the new Hier Payroll API, date range push,

@@ -23,6 +23,17 @@
 - Plain CommonJS, no build step. Run `node --check electron/*.js` after edits.
 
 **Versioning**
+- When the version is bumped, follow this checklist in order:
+  1. Pick the bump: fix, build or docs-only = `patch`; new feature = `minor`; breaking contract or data change =
+     `major`. Confirm the new number with the user before bumping.
+  2. Before the bump: `git status` is clean, `scripts/validate.ps1` ends `VALIDATION PASSED`, and `## [Unreleased]`
+     lists everything since the last tag (`git log <last-tag>..HEAD`).
+  3. Bump only with `npm run release:patch|minor|major`. Never edit `version` by hand.
+  4. Right after the bump run `npm run dist`; confirm `dist\Hier-Sync-Local-Setup-<version>.exe` exists and report
+     its path and size.
+  5. Check the version matches in `package.json`, the root entry of `package-lock.json`, the top `CHANGELOG.md`
+     heading and the installer file name.
+  6. Never commit `dist\`; never push the commit or tag unless asked.
 - `package.json` is the only place the version is set. Add notes under `## [Unreleased]` in `CHANGELOG.md`; use
   `npm run release:patch|minor|major` to release. **Every version bump is followed by `npm run dist`** to build
   `dist\Hier-Sync-Local-Setup-<version>.exe`; confirm the file exists and report it. Never commit `dist\`.
