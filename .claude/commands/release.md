@@ -16,4 +16,6 @@ breaking changes are major).
 5. **Build the installer right after the version bump:** run `npm run dist` and confirm
    `dist\Hier-Sync-Local-Setup-<new version>.exe` exists (report its path and size). If the build fails, show the error and
    stop; the release commit and tag stay as they are.
-6. Do **not** push the commit or tag unless the user asks. `dist\` is git-ignored, so the installer is never committed.
+6. Check the version is consistent in `package.json`, the root entry of `package-lock.json`, the top `CHANGELOG.md`
+   heading and the installer file name; report any mismatch.
+7. Do **not** push the commit or tag unless the user asks. `dist\` is git-ignored, so the installer is never committed.

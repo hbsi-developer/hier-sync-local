@@ -17,7 +17,8 @@
     },
     "devDependencies": {
         "electron": "^33.0.0",
-        "electron-builder": "^25.0.0"
+        "electron-builder": "^25.0.0",
+        "rcedit": "^4.0.1"
     },
     "build": {
         "appId": "com.hierpayroll.hiersynclocal",
@@ -41,7 +42,7 @@
         ],
         "win": {
             "target": "nsis",
-            "icon": "electron/icon.png",
+            "icon": "build/icon.ico",
             "signAndEditExecutable": false,
             "requestedExecutionLevel": "asInvoker"
         },
@@ -51,6 +52,7 @@
             "allowToChangeInstallationDirectory": true,
             "include": "build/installer.nsh",
             "artifactName": "Hier-Sync-Local-Setup-${version}.exe"
-        }
+        },
+        "afterPack": "build/after-pack.js"
     }
 }
