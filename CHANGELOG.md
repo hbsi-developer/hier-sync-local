@@ -17,6 +17,8 @@ Then `npm run dist` builds the installer with the same version in its name.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-26
+
 ### Added
 - Enable or disable a user from the Users page: the Edit dialog has an Enabled switch that writes the state to the
   device. A disabled user can't punch. Rebuild `bridge/zkbridge.exe` to get the device side.
