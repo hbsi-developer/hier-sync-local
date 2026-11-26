@@ -11,7 +11,11 @@ class AttendanceLog extends Model
 
     protected $casts = ['punched_at' => 'datetime'];
 
-    public const VERIFY_MODES = [0 => 'Password', 1 => 'Fingerprint', 2 => 'Card', 15 => 'Face'];
+    public const VERIFY_MODES = [
+        0 => 'Password', 1 => 'Fingerprint', 2 => 'Card', 3 => 'Password', 4 => 'Card',
+        5 => 'Fingerprint + Password', 6 => 'Fingerprint + Card', 7 => 'Password + Card',
+        8 => 'Fingerprint + Password + Card', 15 => 'Face',
+    ];
 
     public const IN_OUT_MODES = [0 => 'Check-In', 1 => 'Check-Out', 2 => 'Break-Out', 3 => 'Break-In', 4 => 'OT-In', 5 => 'OT-Out'];
 

@@ -17,6 +17,16 @@ Then `npm run dist` builds the installer with the same version in its name.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-26
+
+### Fixed
+- Device names in the console code page (not UTF-8) no longer break the pull; the bridge output is now read as UTF-8 and older builds fall back to Windows-1252.
+- Verify modes 3 to 8 (password, card and combined modes) now show readable labels instead of raw numbers.
+
+### Changed
+- Auto sync no longer writes a history row for every repeated "device unreachable" failure; only the first failure and the recovery are logged.
+- Unreachable devices are retried after 5, 10, 20, then 30 minutes instead of every sync interval. Manual and forced pulls always try and always log.
+
 ## [1.1.1] - 2026-11-26
 
 ### Fixed

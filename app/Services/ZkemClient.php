@@ -161,7 +161,13 @@ class ZkemClient
             $cmd .= ' '.escapeshellarg((string) $arg);
         }
         $output = shell_exec($cmd.' 2>&1');
-        $result = json_decode((string) $output, true);
+        $output = (string) $output;
+        $result = json_decode($output, true);
+
+        // Older bridge builds wrote names in the console code page (not UTF-8), which breaks json_decode.
+        if ($result === null && ! mb_check_encoding($output, 'UTF-8')) {
+            $result = json_decode(mb_convert_encoding($output, 'UTF-8', 'Windows-1252'), true);
+        }
 
         if (! is_array($result) || ! array_key_exists('ok', $result)) {
             throw new RuntimeException('Unexpected response from the SDK bridge: '.trim((string) $output));

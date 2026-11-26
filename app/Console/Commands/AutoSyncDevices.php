@@ -32,14 +32,20 @@ class AutoSyncDevices extends Command
             Device::where('auto_sync', true)->orderBy('id')->get()
                 ->filter(fn (Device $d) => $this->option('force')
                     || ! $d->last_sync_attempt_at
-                    || $d->last_sync_attempt_at->lte(now()->subMinutes($minutes)))
+                    || $d->last_sync_attempt_at->lte(now()->subMinutes(self::waitMinutes($minutes, $d->sync_failures))))
                 ->each(function (Device $d) use ($syncer) {
-                    $this->line("{$d->name}: ".$syncer->syncAndRecord($d));
+                    $this->line("{$d->name}: ".$syncer->syncAndRecord($d, ! $this->option('force')));
                 });
         } finally {
             $lock->release();
         }
 
         return self::SUCCESS;
+    }
+
+    /** Minutes to wait before the next attempt: the interval when healthy, 5, 10, 20, then 30 while failing. */
+    public static function waitMinutes(int $interval, int $failures): int
+    {
+        return $failures <= 0 ? $interval : min(5 * 2 ** min($failures - 1, 3), 30);
     }
 }

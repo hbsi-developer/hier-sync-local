@@ -53,9 +53,15 @@ class LogSyncer
         return $new;
     }
 
-    /** sync() that records the outcome on the device instead of throwing. */
-    public function syncAndRecord(Device $device): string
+    /**
+     * sync() that records the outcome on the device instead of throwing.
+     *
+     * With $quietRepeats (timer runs), a failure that repeats the previous one is not written to the
+     * activity history again: only the first failure and the recovery are logged.
+     */
+    public function syncAndRecord(Device $device, bool $quietRepeats = false): string
     {
+        $alreadyFailing = $device->last_sync_ok === false;
         $start = microtime(true);
         $new = null;
         try {
@@ -67,9 +73,16 @@ class LogSyncer
             $ok = false;
         }
 
-        SyncLog::record('device_sync', $ok ? 'success' : 'error', $ok ? "Pulled {$message}." : $message, $device->fresh() ?? $device, $new, (int) round((microtime(true) - $start) * 1000));
+        if (! ($quietRepeats && ! $ok && $alreadyFailing)) {
+            SyncLog::record('device_sync', $ok ? 'success' : 'error', $ok ? "Pulled {$message}." : $message, $device->fresh() ?? $device, $new, (int) round((microtime(true) - $start) * 1000));
+        }
 
-        $device->update(['last_sync_attempt_at' => now(), 'last_sync_ok' => $ok, 'last_sync_message' => $message]);
+        $device->update([
+            'last_sync_attempt_at' => now(),
+            'last_sync_ok' => $ok,
+            'last_sync_message' => $message,
+            'sync_failures' => $ok ? 0 : $device->sync_failures + 1,
+        ]);
 
         return $message;
     }
