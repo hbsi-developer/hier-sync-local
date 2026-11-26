@@ -17,6 +17,8 @@ Then `npm run dist` builds the installer with the same version in its name.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-26
+
 ### Fixed
 - The installer and app executable now carry the Hier Sync icon. electron-builder skipped icon editing because
   `signAndEditExecutable` is off, so an `afterPack` hook (`build/after-pack.js`) applies `build/icon.ico` with the new
