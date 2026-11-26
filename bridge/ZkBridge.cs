@@ -12,6 +12,7 @@ static class ZkBridge
 {
     static int Main(string[] args)
     {
+        Console.OutputEncoding = new System.Text.UTF8Encoding(false);
         var json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
         try
         {
