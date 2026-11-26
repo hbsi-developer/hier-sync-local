@@ -1,7 +1,7 @@
 {
     "name": "hier-sync-local",
     "productName": "Hier Sync Local",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "description": "Desktop app for ZKTeco attendance devices (Laravel + Electron)",
     "author": "Hier Business Solutions Inc.",
     "main": "electron/main.js",
