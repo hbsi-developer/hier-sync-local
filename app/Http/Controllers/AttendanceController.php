@@ -40,7 +40,7 @@ class AttendanceController extends Controller
     /** Names keyed by "device_id|enroll_number": the same enroll number is a different person on each device. */
     private function names(): \Illuminate\Support\Collection
     {
-        return DeviceUser::all()->mapWithKeys(fn (DeviceUser $u) => [$u->device_id.'|'.$u->enroll_number => $u->name]);
+        return DeviceUser::all()->mapWithKeys(fn (DeviceUser $u) => [$u->device_id.'|'.$u->enroll_number => $u->shown_name]);
     }
 
     private function query(Request $request)

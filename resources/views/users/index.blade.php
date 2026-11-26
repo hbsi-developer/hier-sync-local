@@ -32,8 +32,8 @@
             <tr>
                 <td>
                     <div class="who">
-                        <div class="av">{{ strtoupper(mb_substr($u->name ?: $u->enroll_number, 0, 1)) }}</div>
-                        <div><b>{{ $u->name ?: 'Unnamed' }}</b><div class="muted num" style="font-size:12px">#{{ $u->enroll_number }}</div></div>
+                        <div class="av">{{ strtoupper(mb_substr($u->shown_name ?: $u->enroll_number, 0, 1)) }}</div>
+                        <div><b>{{ $u->shown_name ?: 'Unnamed' }}</b><div class="muted num" style="font-size:12px">#{{ $u->enroll_number }}</div></div>
                     </div>
                 </td>
                 <td class="num">{!! $u->card_number ? e($u->card_number) : '<span class="muted">—</span>' !!}</td>
@@ -41,7 +41,7 @@
                 <td><span class="pill {{ $u->enabled ? 'good' : 'bad' }}">{{ $u->enabled ? 'Enabled' : 'Disabled' }}</span></td>
                 <td style="text-align:right">
                     <button class="sm" type="button"
-                        data-action="{{ route('users.update', $u) }}" data-name="{{ $u->name }}" data-card="{{ $u->card_number }}"
+                        data-action="{{ route('users.update', $u) }}" data-name="{{ $u->shown_name }}" data-card="{{ $u->card_number }}" data-enabled="{{ $u->enabled ? '1' : '0' }}"
                         data-title="#{{ $u->enroll_number }} on {{ $u->device->name }}" onclick="editUser(this)"><x-icon name="edit"/> Edit</button>
                 </td>
             </tr>
@@ -66,8 +66,14 @@
         @csrf @method('PUT')
         <h2>Edit user</h2>
         <div class="muted" id="user-title"></div>
-        <label class="f">Name<input name="name" id="u-name" maxlength="24"></label>
+        <label class="f">Name<input name="name" id="u-name" maxlength="60"></label>
+        <div class="muted" style="font-size:12px; margin-top:-6px">Older terminals keep only the first 8 characters. The full name is kept in this app.</div>
         <label class="f">Card number<input name="card_number" id="u-card" inputmode="numeric" pattern="[0-9]{1,10}" maxlength="10" placeholder="Leave blank to clear the card"></label>
+        <input type="hidden" name="enabled" value="0">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:12px">
+            <div><b>Enabled</b><div class="muted" style="font-size:12px">A disabled user can't punch on the device</div></div>
+            <label class="switch" title="Enabled"><input type="checkbox" name="enabled" value="1" id="u-enabled"><span></span></label>
+        </div>
         <div class="foot"><button type="button" id="u-cancel" onclick="this.closest('dialog').close()">Cancel</button><button class="primary" id="u-save">Save to device</button></div>
     </form>
 </dialog>
@@ -98,6 +104,7 @@
         document.getElementById('user-title').textContent = b.dataset.title;
         document.getElementById('u-name').value = b.dataset.name;
         document.getElementById('u-card').value = b.dataset.card;
+        document.getElementById('u-enabled').checked = b.dataset.enabled === '1';
         document.getElementById('user-dlg').showModal();
     }
 </script>

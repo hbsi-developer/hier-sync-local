@@ -11,6 +11,12 @@ class DeviceUser extends Model
 
     protected $casts = ['enabled' => 'boolean'];
 
+    /** The name to show: the full name kept in this app, else whatever the device stores. */
+    public function getShownNameAttribute(): string
+    {
+        return (string) ($this->display_name ?: $this->name);
+    }
+
     public function device(): BelongsTo
     {
         return $this->belongsTo(Device::class);

@@ -136,13 +136,19 @@ class ZkemClient
     }
 
     /**
-     * Edit an existing user on the device: set the card number (blank clears it) and optionally the name.
+     * Edit an existing user on the device: set the card number (blank clears it), optionally the name, and
+     * optionally enable/disable the user ($enabled null keeps the current state).
      *
-     * @return array{enroll_number:string,name:string,card_number:string}
+     * @return array{enroll_number:string,name:string,card_number:string,enabled?:bool}
      */
-    public function setUser(string $enrollNumber, string $cardNumber, ?string $name = null): array
+    public function setUser(string $enrollNumber, string $cardNumber, ?string $name = null, ?bool $enabled = null): array
     {
-        return $this->call('setuser', [$enrollNumber, $cardNumber === '' ? '0' : $cardNumber, $name === null ? '' : base64_encode($name)]);
+        return $this->call('setuser', [
+            $enrollNumber,
+            $cardNumber === '' ? '0' : $cardNumber,
+            $name === null ? '' : base64_encode($name),
+            $enabled === null ? '' : ($enabled ? '1' : '0'),
+        ]);
     }
 
     /** @return array<int, array{enroll_number:string,punched_at:Carbon,verify_mode:int,in_out_mode:int,work_code:int}> */

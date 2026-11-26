@@ -111,6 +111,17 @@ static class ZkBridge
         return "";
     }
 
+    // Re-reads name/card/enabled as the device stored them, so callers never trust what was merely sent.
+    static Dictionary<string, object> ReadBack(dynamic zk, string enroll, int mn, bool legacy)
+    {
+        string n = "", p = ""; int pr = 0; bool e = false;
+        bool ok = legacy ? (bool)zk.GetUserInfo(mn, int.Parse(enroll), ref n, ref p, ref pr, ref e)
+                         : (bool)zk.SSR_GetUserInfo(mn, enroll, out n, out p, out pr, out e);
+        if (!ok) throw new Exception("Saved, but could not read user " + enroll + " back from the device.");
+        return new Dictionary<string, object> {
+            { "enroll_number", enroll }, { "name", (n ?? "").Trim() }, { "card_number", ReadCard(zk) }, { "enabled", e } };
+    }
+
     static object Run(dynamic zk, string cmd, int mn, string[] args)
     {
         switch (cmd)
@@ -160,6 +171,8 @@ static class ZkBridge
                 if (card == "") card = "0";
                 string newName = args.Length > 6 && args[6] != ""
                     ? System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(args[6])) : null;
+                // Optional 8th arg: "1" enables, "0" disables the user. Omitted/blank keeps the current state.
+                bool? newEnabled = args.Length > 7 && (args[7] == "1" || args[7] == "0") ? (bool?)(args[7] == "1") : null;
 
                 zk.EnableDevice(mn, false);
                 try
@@ -173,6 +186,7 @@ static class ZkBridge
                         : (bool)zk.SSR_GetUserInfo(mn, enrollNo, out name, out pwd, out priv, out en);
                     if (!found) throw new Exception("User " + enrollNo + " was not found on the device.");
 
+                    if (newEnabled.HasValue) en = newEnabled.Value;
                     zk.SetStrCardNumber(card);
                     bool saved = legacy
                         ? (bool)zk.SetUserInfo(mn, enrollInt, newName ?? name, pwd, priv, en)
@@ -183,8 +197,7 @@ static class ZkBridge
                         throw new Exception("Device refused the update (SDK error " + err + "). The card number may already belong to another user.");
                     }
                     zk.RefreshData(mn);
-                    return new Dictionary<string, object> {
-                        { "enroll_number", enrollNo }, { "name", (newName ?? name ?? "").Trim() }, { "card_number", ReadCard(zk, enrollNo, mn, legacy) } };
+                    return ReadBack(zk, enrollNo, mn, legacy);
                 }
                 finally { zk.EnableDevice(mn, true); }
             }
