@@ -119,7 +119,13 @@ class DeviceController extends Controller
             $users = $zk->users();
             DB::transaction(function () use ($users, $device) {
                 foreach ($users as $u) {
-                    $device->users()->updateOrCreate(['enroll_number' => $u['enroll_number']], $u);
+                    $row = $device->users()->firstOrNew(['enroll_number' => $u['enroll_number']]);
+                    // A full name kept here only holds while the device still stores the name we saw last;
+                    // if someone renamed the user on the terminal, the device wins.
+                    if ($row->exists && $row->name !== $u['name']) {
+                        $row->display_name = null;
+                    }
+                    $row->fill($u)->save();
                 }
             });
 
@@ -140,7 +146,7 @@ class DeviceController extends Controller
     private function run(callable $action, Device $device, ?string $logType = null): RedirectResponse
     {
         try {
-            $zk = (new ZkemClient($device->machine_number))->connect($device->ip, $device->port);
+            $zk = app(ZkemClient::class, ['machineNumber' => $device->machine_number])->connect($device->ip, $device->port);
             $message = $action($zk);
             $zk->disconnect();
 

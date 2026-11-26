@@ -17,6 +17,16 @@ Then `npm run dist` builds the installer with the same version in its name.
 
 ## [Unreleased]
 
+### Added
+- Enable or disable a user from the Users page: the Edit dialog has an Enabled switch that writes the state to the
+  device. A disabled user can't punch. Rebuild `bridge/zkbridge.exe` to get the device side.
+- Full employee names on terminals that store short ones: when the device keeps fewer characters than you typed (older
+  models keep 8), the full name is kept in this app and shown on Users and Attendance. Pulling users no longer undoes
+  it unless the name is changed on the terminal itself.
+
+### Fixed
+- Saving a user now reads the name back from the device instead of assuming it was stored.
+
 ## [1.2.0] - 2026-11-26
 
 ### Fixed
